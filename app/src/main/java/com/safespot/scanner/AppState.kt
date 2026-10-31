@@ -12,13 +12,14 @@ import com.safespot.scanner.vpn.Servers
 import com.safespot.scanner.vpn.VpnServer
 import kotlinx.coroutines.*
 import java.security.MessageDigest
+import java.io.File
 
 data class FileHit(val name: String, val sha256: String, val match: String?, val cloud: String?)
 
 /** Single source of UI state. Everything shown comes from real scans or real network results. */
 class AppState(private val ctx: Context) {
     val store = Store(ctx)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + CoroutineExceptionHandler { _, t -> CrashReporter.nonFatal("AppState coroutine", t) })
 
     var tab by mutableStateOf("home")
     var detail by mutableStateOf<AppReport?>(null)
@@ -54,7 +55,8 @@ class AppState(private val ctx: Context) {
         scope.launch { newAppAlerts = withContext(Dispatchers.IO) { Reminder.checkNewApps(ctx, false) } } }
 
     fun refreshDbInfo() = scope.launch(Dispatchers.IO) {
-        val i = IocDb.load(ctx); val m = MalwareDb.load(ctx)
+        val i = runCatching { IocDb.load(ctx) }.getOrElse { CrashReporter.nonFatal("IocDb.load", it); File(ctx.filesDir, "ioc.json").delete(); IocDb.load(ctx) }
+        val m = runCatching { MalwareDb.load(ctx) }.getOrElse { CrashReporter.nonFatal("MalwareDb.load", it); File(ctx.filesDir, "malware_db.json").delete(); MalwareDb.load(ctx) }
         withContext(Dispatchers.Main) { iocVersion = i.version; iocSize = i.byPackage.size + i.byCert.size; mdbVersion = m.version; mdbSize = m.size }
     }
 

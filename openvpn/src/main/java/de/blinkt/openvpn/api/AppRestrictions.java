@@ -52,11 +52,14 @@ public class AppRestrictions {
                 applyRestrictions(context);
             }
         };
-        c.registerReceiver(mRestrictionsReceiver, restrictionsFilter);
+        if (android.os.Build.VERSION.SDK_INT >= 33)
+            c.registerReceiver(mRestrictionsReceiver, restrictionsFilter, Context.RECEIVER_NOT_EXPORTED);
+        else
+            c.registerReceiver(mRestrictionsReceiver, restrictionsFilter);
     }
 
     private void removeChangesListener(Context c) {
-        c.unregisterReceiver(mRestrictionsReceiver);
+        try { c.unregisterReceiver(mRestrictionsReceiver); } catch (IllegalArgumentException ignored) { }
     }
 
     private String hashConfig(String rawconfig, String allowedApps) {

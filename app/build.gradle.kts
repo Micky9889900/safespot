@@ -35,8 +35,8 @@ android {
         applicationId = "com.safespot.scanner"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
         ndk { abiFilters += ((project.findProperty("abis") as String?) ?: "arm64-v8a,armeabi-v7a,x86_64").split(",") }
         buildConfigField("String", "SERVERS_URL", "\"https://micky9889900.github.io/vpn/servers.json\"")
         buildConfigField("String", "MB_AUTH_KEY", "\"${(project.findProperty("mbAuthKey") ?: "")}\"")
@@ -87,6 +87,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    testOptions { unitTests { isIncludeAndroidResources = true; isReturnDefaultValues = true } }
     lint { abortOnError = false; checkReleaseBuilds = false }
 }
 
@@ -103,4 +104,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("com.google.android.gms:play-services-ads:25.4.0")
     implementation("com.google.android.ump:user-messaging-platform:3.2.0")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("androidx.test:core:1.7.0")
 }

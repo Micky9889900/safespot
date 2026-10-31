@@ -5,7 +5,6 @@ import com.safespot.scanner.scan.Risk
 import com.safespot.scanner.scan.ScanResult
 import org.json.JSONArray
 import org.json.JSONObject
-import java.time.LocalDate
 
 data class HistoryEntry(val time: Long, val score: Int, val apps: Int, val risky: Int, val threats: Int, val deep: Boolean,
                         val levels: Map<String, Int>)
@@ -71,7 +70,7 @@ class Store(ctx: Context) {
             arr.put(JSONObject().put("t", e.time).put("s", e.score).put("a", e.apps).put("r", e.risky).put("th", e.threats).put("d", e.deep).put("levels", JSONObject(e.levels as Map<*, *>))) }
         arr.put(o)
         // streak by calendar day
-        val today = LocalDate.now().toEpochDay()
+        val today = localEpochDay()
         val last = p.getLong("streakDay", -10)
         val st = when (today - last) { 0L -> streak.coerceAtLeast(1); 1L -> streak + 1; else -> 1 }
         p.edit().putString("history", arr.toString()).putLong("lastScan", r.time).putLong("streakDay", today).putInt("streak", st)
@@ -102,6 +101,9 @@ class Store(ctx: Context) {
             "Stalkerware often hides its icon. SafeSpot lists apps without a launcher icon.",
             "Use a different PIN for your phone than for your bank card.",
         )
-        fun tipOfDay() = tips[(LocalDate.now().toEpochDay() % tips.size).toInt()]
+        fun tipOfDay() = tips[(localEpochDay() % tips.size).toInt()]
     }
 }
+
+/** Local calendar day number (same as LocalDate.now().toEpochDay()) without java.time, so it works on API 24-25. */
+internal fun localEpochDay(): Long { val now = System.currentTimeMillis(); return Math.floorDiv(now + java.util.TimeZone.getDefault().getOffset(now), 86_400_000L) }

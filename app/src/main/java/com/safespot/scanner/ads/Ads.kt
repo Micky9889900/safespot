@@ -51,7 +51,7 @@ object Ads {
 
     private fun start(a: Activity) {
         if (!started.compareAndSet(false, true)) return
-        Thread { MobileAds.initialize(a) {}; a.runOnUiThread { ready = true; loadInter(a); loadRewarded(a) } }.start()
+        Thread { try { MobileAds.initialize(a) {}; a.runOnUiThread { runCatching { ready = true; loadInter(a); loadRewarded(a) } } } catch (t: Throwable) { com.safespot.scanner.CrashReporter.nonFatal("MobileAds", t) } }.start()
     }
 
     private fun loadInter(a: Activity) {
