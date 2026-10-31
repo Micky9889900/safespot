@@ -1,0 +1,13 @@
+.gradle/
+build/
+*/build/
+local.properties
+keystore/
+output/
+*.jks
+.cxx/
+.cxx/
+**/.cxx/
+*.keystore
+keystore.properties
+openvpn/src/main/cpp/openssl/apps/rsa8192.pem
