@@ -10,9 +10,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -38,7 +40,7 @@ fun HomeHero(s: AppState) {
                 Text(greet, color = C.SilverDim, fontSize = 13.sp)
                 Text("${GenieProfile.name} is watching over your phone", color = C.Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, lineHeight = 22.sp)
                 Spacer(Modifier.height(6.dp))
-                if (s.store.streak > 0) Pill("🔥 ${s.store.streak}-day streak", C.Amber)
+                if (s.store.streak > 0) Row(verticalAlignment = Alignment.CenterVertically) { Art("ic_streak_flame", Modifier.size(22.dp)); Pill("${if (artId("ic_streak_flame") == 0) "🔥 " else ""}${s.store.streak}-day streak", C.Amber) }
             }
             if (res != 0) androidx.compose.foundation.Image(painterResource(res), null, Modifier.height(96.dp))
         }
@@ -46,7 +48,12 @@ fun HomeHero(s: AppState) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { ScoreRing(r?.score ?: last?.score, 190.dp) }
         Body(if (s.store.lastScan == 0L) "No scan yet: run your first scan to get a score." else "Last scan ${fmtAgo(s.store.lastScan)}", C.SilverDim, 12)
         Spacer(Modifier.height(10.dp))
-        PrimaryButton(if (s.scanning) "Scanning…" else "Scan now", Modifier.fillMaxWidth(), C.Accent) { s.scan(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (artId("btn_scan_main") != 0) { val p by androidx.compose.animation.core.rememberInfiniteTransition(label = "orb").animateFloat(1f, 1.07f,
+                    androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1000), androidx.compose.animation.core.RepeatMode.Reverse), label = "p")
+                Art(if (s.scanning) "btn_scan_main_active" else "btn_scan_main", Modifier.size(64.dp).graphicsLayer { scaleX = p; scaleY = p }.clip(CircleShape).clickable { s.scan(false) })
+                Spacer(Modifier.width(10.dp)) }
+            PrimaryButton(if (s.scanning) "Scanning…" else "Scan now", Modifier.weight(1f), C.Accent) { s.scan(false) } }
     }
 }
 
@@ -55,15 +62,19 @@ fun StatusChips(s: AppState) {
     val ctx = LocalContext.current
     val bat = remember { Battery.read(ctx) }; val mem = remember { Memory.read(ctx) }; val st = remember { StorageInfo.read(ctx, null) }
     val chips = listOf(
-        Triple("🔋 ${bat.level ?: "--"}%", if ((bat.level ?: 100) < 20) C.Red else C.Green, "battery"),
-        Triple("🌡 ${bat.tempC?.let { "%.0f°C".format(it) } ?: "--"}", if ((bat.tempC ?: 0f) > 40) C.Red else C.Cyan, "cooler"),
-        Triple("🧠 RAM ${mem.pct}%", if (mem.pct > 85) C.Amber else C.Blue, "booster"),
-        Triple("💾 ${fmtBytes(st.free)} free", if (st.free * 10 < st.total) C.Red else C.Green, "storage"),
-        Triple(if (Vpn.state == Vpn.State.CONNECTED) "🔒 VPN on" else "🔓 VPN off", if (Vpn.state == Vpn.State.CONNECTED) C.Green else C.SilverDim, "vpn"))
+        Triple("battery|${bat.level ?: "--"}%", if ((bat.level ?: 100) < 20) C.Red else C.Green, "battery"),
+        Triple("temp|${bat.tempC?.let { "%.0f°C".format(it) } ?: "--"}", if ((bat.tempC ?: 0f) > 40) C.Red else C.Cyan, "cooler"),
+        Triple("ram|RAM ${mem.pct}%", if (mem.pct > 85) C.Amber else C.Blue, "booster"),
+        Triple("storage|${fmtBytes(st.free)} free", if (st.free * 10 < st.total) C.Red else C.Green, "storage"),
+        Triple(if (Vpn.state == Vpn.State.CONNECTED) "vpn_on|VPN on" else "vpn_off|VPN off", if (Vpn.state == Vpn.State.CONNECTED) C.Green else C.SilverDim, "vpn"))
     Spacer(Modifier.height(12.dp))
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(chips) { (t, col, go) ->
-        Text(t, Modifier.clip(RoundedCornerShape(50)).background(col.copy(alpha = .16f)).clickable { if (go == "vpn") s.tab = "vpn" else s.tool = go }.padding(horizontal = 14.dp, vertical = 8.dp),
-            color = C.Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) } }
+        val ic = t.substringBefore('|'); val label = t.substringAfter('|')
+        val emo = mapOf("battery" to "🔋", "temp" to "🌡", "ram" to "🧠", "storage" to "💾", "vpn_on" to "🔒", "vpn_off" to "🔓")[ic] ?: ""
+        Row(Modifier.clip(RoundedCornerShape(50)).background(col.copy(alpha = .16f)).clickable { if (go == "vpn") s.tab = "vpn" else s.tool = go }.padding(start = 6.dp, end = 14.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Art("ic_chip_$ic", Modifier.size(28.dp)) { Text(emo, Modifier.padding(start = 6.dp), fontSize = 13.sp) }
+            Text(" $label", color = C.Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) } } }
 }
 
 /** Big tile grid on Home: Scan / Antivirus / VPN + all Phone Care tools. */
@@ -96,7 +107,7 @@ fun Recommended(s: AppState) {
     }
     Section("Recommended for you")
     Glass(onClick = { if (rec.third == "#scan") s.scan(false) else s.tool = rec.third }) { Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("✨", fontSize = 30.sp); Column(Modifier.weight(1f).padding(start = 12.dp)) { Text(rec.first, color = C.Ink, fontWeight = FontWeight.Bold); Body(rec.second, C.SilverDim, 12) }
+        Art("ic_status_safe", Modifier.size(44.dp)) { Text("✨", fontSize = 30.sp) }; Column(Modifier.weight(1f).padding(start = 12.dp)) { Text(rec.first, color = C.Ink, fontWeight = FontWeight.Bold); Body(rec.second, C.SilverDim, 12) }
         Text("›", color = C.Ink, fontSize = 24.sp) } }
 }
 
@@ -107,7 +118,7 @@ fun Timeline(s: AppState) {
     if (a.isEmpty()) return
     Section("Recent activity")
     Glass { a.forEachIndexed { i, (t, ic, x) -> Row(verticalAlignment = Alignment.Top) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) { Box(Modifier.size(28.dp).clip(CircleShape).background(C.Accent2.copy(alpha = .2f)), contentAlignment = Alignment.Center) { Text(ic, fontSize = 14.sp) }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) { Box(Modifier.size(28.dp).clip(CircleShape).background(C.Accent2.copy(alpha = .2f)), contentAlignment = Alignment.Center) { Art("ic_timeline_dot", Modifier.size(28.dp)) { Text(ic, fontSize = 14.sp) } }
             if (i < a.size - 1) Box(Modifier.width(2.dp).height(18.dp).background(C.SilverDim.copy(alpha = .3f))) }
         Column(Modifier.padding(start = 10.dp)) { Text(x, color = C.Ink, fontSize = 13.sp); Text(fmtAgo(t), color = C.SilverDim, fontSize = 11.sp) } } } }
 }

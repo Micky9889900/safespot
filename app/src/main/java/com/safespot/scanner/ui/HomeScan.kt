@@ -71,7 +71,8 @@ fun HomeScreen(s: AppState) {
             val un = st.unlocked
             androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) { items(st.badges.sortedByDescending { it.id in un }) { b ->
                 Glass(Modifier.width(96.dp), pad = 10.dp) { Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(b.icon, fontSize = 30.sp, color = if (b.id in un) C.Ink else C.SilverDim.copy(alpha = .4f), modifier = Modifier.graphicsLayerAlpha(if (b.id in un) 1f else .35f))
+                    if (b.id in un) Art("badge_${b.id}", Modifier.size(56.dp)) { Text(b.icon, fontSize = 30.sp, color = C.Ink) }
+                    else Art("badge_locked", Modifier.size(56.dp), alpha = .55f, filter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) })) { Text(b.icon, fontSize = 30.sp, color = C.SilverDim.copy(alpha = .4f), modifier = Modifier.graphicsLayerAlpha(.35f)) }
                     Text(b.title, color = if (b.id in un) C.Ink else C.SilverDim, fontSize = 11.sp, maxLines = 2, lineHeight = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center) } } } }
             Spacer(Modifier.height(80.dp))
         }

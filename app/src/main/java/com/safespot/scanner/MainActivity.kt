@@ -76,6 +76,9 @@ fun Root(s: AppState) {
         s.tool != null -> if (act != null) Ads.onReturnFromTool(act) { s.tool = null } else s.tool = null
         s.tab == "about" -> s.tab = "me"; else -> s.tab = "home" } }
     Box(Modifier.fillMaxSize().animatedBg(phase)) {
+    val bgName = when { s.tab == "scan" && s.detail == null && s.tool == null -> "bg_scan"; s.tab == "vpn" -> "bg_vpn_map"
+        else -> "bg_home_" + when (C.pal.id) { "navy" -> "dark"; else -> C.pal.id } }
+    com.safespot.scanner.ui.Art(bgName, Modifier.fillMaxSize(), androidx.compose.ui.layout.ContentScale.Crop, alpha = if (bgName == "bg_vpn_map") .55f else .85f)
     Scaffold(containerColor = Color.Transparent,
         bottomBar = { Column {
             // Banner only on Home and tool lists, never on a tool's result screen (those carry one native ad).
@@ -84,7 +87,8 @@ fun Root(s: AppState) {
                 tabs.forEach { (k, l, ic: ImageVector) -> val sel = (s.tab == k || (k == "me" && s.tab == "about")) && s.detail == null && !s.showDiag && s.tool == null
                     val sc by androidx.compose.animation.core.animateFloatAsState(if (sel) 1.25f else 1f, androidx.compose.animation.core.spring(.4f), label = "nav")
                     NavigationBarItem(sel, { s.tab = k; s.detail = null; s.showDiag = false; s.tool = null },
-                    { Icon(ic, l, Modifier.graphicsLayer { scaleX = sc; scaleY = sc; translationY = if (sel) -4f else 0f }) }, label = { Text(l) }, colors = NavigationBarItemDefaults.colors(selectedIconColor = C.Ink, selectedTextColor = C.Ink,
+                    { val gm = Modifier.size(30.dp).graphicsLayer { scaleX = sc; scaleY = sc; translationY = if (sel) -4f else 0f }
+                      com.safespot.scanner.ui.Art("ic_nav_" + k + if (sel) "_active" else "", gm) { Icon(ic, l, gm) } }, label = { Text(l) }, colors = NavigationBarItemDefaults.colors(selectedIconColor = C.Ink, selectedTextColor = C.Ink,
                         indicatorColor = C.Accent.copy(alpha = .3f), unselectedIconColor = C.SilverDim, unselectedTextColor = C.SilverDim)) }
             } } }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {

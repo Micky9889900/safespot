@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -64,8 +65,9 @@ object ToolCatalog {
 
 /** 3D-style illustrated tile icon: gradient orb with gloss highlight and soft shadow. Pure vector, zero APK size. */
 @Composable
-fun ToolOrb(spec: ToolSpec, size: androidx.compose.ui.unit.Dp = 52.dp, pulse: Boolean = false) {
+fun ToolOrb(spec: ToolSpec, size: androidx.compose.ui.unit.Dp = 52.dp, pulse: Boolean = false, art: String = toolArt(spec.id)) {
     val sc by (if (pulse) rememberInfiniteTransition(label = "orb").animateFloat(1f, 1.08f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "s") else remember { mutableFloatStateOf(1f) })
+    if (art.isNotEmpty() && artId(art) != 0) { Art(art, Modifier.size(size * sc * 1.12f)); return }
     Box(Modifier.size(size * sc).shadow(10.dp, CircleShape, ambientColor = spec.b, spotColor = spec.b).clip(CircleShape)
         .background(Brush.linearGradient(listOf(spec.a, spec.b))), contentAlignment = Alignment.Center) {
         Canvas(Modifier.matchParentSize()) { drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = .55f), Color.Transparent), Offset(size.toPx() * .3f, size.toPx() * .25f), size.toPx() * .45f)) }
@@ -193,7 +195,7 @@ fun JunkTool(s: AppState) {
             Spacer(Modifier.height(16.dp)); if (!usage) UsageGate("To show how much cache each app is holding,") } } }
         "run" -> RunState(spec, "Scanning… $label", null)
         else -> { val r = report!!; Box { Particles(FxKind.SPARKLE)
-            LazyColumn(contentPadding = PaddingValues(16.dp)) {
+            LazyColumn(contentPadding = PaddingValues(16.dp)) { item { ResultArt("ill_result_cleaned") }
                 item { Glass { Text("Reclaimable in ${r.folder}", color = C.SilverDim, fontSize = 13.sp)
                     AnimatedCount(r.reclaimable.toFloat(), { fmtBytes(it.toLong()) }, big)
                     Body("${r.scanned} files scanned · SafeSpot cache cleared: ${fmtBytes(freedCache)}", C.SilverDim, 12) }
@@ -274,7 +276,7 @@ fun CoolerTool(s: AppState) {
     if (phase == "run") { RunState(spec, "Reading thermal sensors…", null); return }
     val ti = now!!; val heavy = remember(usage) { Usage.top(ctx, 3600_000L, byRecent = true, limit = 8) }
     Box { if (timer == 0 && start != null) Particles(FxKind.SNOW)
-    LazyColumn(contentPadding = PaddingValues(16.dp)) {
+    LazyColumn(contentPadding = PaddingValues(16.dp)) { item { ResultArt("ill_result_cooled") }
         item { Glass { Text("Battery temperature", color = C.SilverDim, fontSize = 13.sp)
             AnimatedCount(ti.batteryC ?: 0f, { if (ti.batteryC == null) "--" else "%.1f °C".format(it) }, big, ti.batteryC?.let { if (it > 40) C.Red else if (it > 35) C.Amber else C.Cyan } ?: C.Ink)
             Kv("CPU temperature", ti.cpuC?.let { "%.1f °C".format(it) } ?: "Hidden by Android on this phone"); Kv("Thermal status", ti.status, if (ti.statusLevel >= 2) C.Red else if (ti.statusLevel == 1) C.Amber else C.Green)
@@ -303,7 +305,7 @@ fun BoosterTool(s: AppState) {
     if (phase == "run") { RunState(spec, "Asking Android to trim background apps…", null); return }
     val b = before!!; val a = after!!; val freed = (a.avail - b.avail).coerceAtLeast(0)
     Box { Particles(FxKind.CONFETTI)
-    LazyColumn(contentPadding = PaddingValues(16.dp)) {
+    LazyColumn(contentPadding = PaddingValues(16.dp)) { item { ResultArt("ill_result_boosted") }
         item { Glass { Text("Memory freed", color = C.SilverDim, fontSize = 13.sp); AnimatedCount(freed.toFloat(), { fmtBytes(it.toLong()) }, big, C.Green)
             Kv("Available before", fmtBytes(b.avail)); Kv("Available after", fmtBytes(a.avail), C.Green); Kv("Total RAM", fmtBytes(a.total)); Kv("In use now", "${a.pct} %")
             if (a.low) Kv("Status", "Android reports LOW memory", C.Red) }
@@ -348,7 +350,7 @@ fun WifiTool(s: AppState) {
     val x = w ?: run { RunState(spec, "Checking this network…", null); return }
     val score = if (!x.onWifi) null else listOf(x.open == false, x.validated, !x.captive, x.vpn || x.privateDns == true).count { it } * 25
     Box { if (score != null && score >= 75) Particles(FxKind.SHIELD)
-    LazyColumn(contentPadding = PaddingValues(16.dp)) {
+    LazyColumn(contentPadding = PaddingValues(16.dp)) { item { ResultArt(if (score != null && score >= 75) "ill_result_safe" else "") }
         item { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { ScoreRing(score, 170.dp, "Network safety") }
             if (!x.onWifi) Glass { Body("You're not on Wi-Fi right now. Mobile data is encrypted between you and your carrier.", C.Silver) }
             Section("Checks"); Glass {
@@ -432,3 +434,9 @@ fun NotifTool(s: AppState) {
         item { ResultFooter(s, "notif", listOf("Turn off 'promotions' channels but keep messages.", "Fewer wake-ups = longer battery life.")) }
     }
 }
+
+
+@Composable
+fun ResultArt(name: String) { if (name.isEmpty() || artId(name) == 0) return
+    val a by animateFloatAsState(1f, tween(600), label = "ra")
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Art(name, Modifier.size(150.dp).graphicsLayer { scaleX = .8f + .2f * a; scaleY = .8f + .2f * a; alpha = a }) } }

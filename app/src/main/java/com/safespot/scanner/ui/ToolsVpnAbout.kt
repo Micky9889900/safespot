@@ -207,6 +207,10 @@ fun ConnectButton(state: Vpn.State, onClick: () -> Unit) {
     Box(Modifier.size(200.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize().scale(if (state == Vpn.State.CONNECTED) pulse else 1f)) { drawCircle(col.copy(alpha = .12f)); drawCircle(col.copy(alpha = .25f), size.minDimension * .4f) }
         if (state == Vpn.State.CONNECTING) Canvas(Modifier.size(170.dp)) { drawArc(col, spin, 90f, false, style = Stroke(8f)) }
+        val art = when (state) { Vpn.State.CONNECTED -> "btn_vpn_on"; Vpn.State.CONNECTING -> "btn_vpn_connecting"; else -> "btn_vpn_off" }
+        if (artId(art) != 0) { Art(art, Modifier.size(170.dp).scale(if (state == Vpn.State.CONNECTING) .96f + .04f * pulse else 1f).clip(CircleShape).clickable { onClick() })
+            Text(if (state == Vpn.State.CONNECTED) "TAP TO STOP" else if (state == Vpn.State.CONNECTING) "CONNECTING…" else "TAP TO CONNECT", Modifier.align(Alignment.BottomCenter), color = col, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.sp)
+        } else
         Box(Modifier.size(140.dp).clip(CircleShape).background(Brush.radialGradient(listOf(col, col.copy(alpha = .55f), C.NavyDeep))).clickable { onClick() }, contentAlignment = Alignment.Center) {
             Text(if (state == Vpn.State.CONNECTED) "STOP" else if (state == Vpn.State.CONNECTING) "CANCEL" else "CONNECT", color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp)
         }
@@ -220,7 +224,7 @@ fun ServerPicker(s: AppState, close: () -> Unit) {
         item { Row(verticalAlignment = Alignment.CenterVertically) { GhostButton("← Back") { close() }; Spacer(Modifier.weight(1f)); GhostButton(if (s.loadingServers) "…" else "Refresh") { s.loadServers(true) } }
             Spacer(Modifier.height(8.dp)); Title("Choose a location"); Body("${s.servers.size} servers · ${s.serverSource}", C.SilverDim, 12); Spacer(Modifier.height(8.dp))
             Glass(pad = 12.dp, onClick = { s.setAuto(true); close() }) { Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("⚡", fontSize = 22.sp); Column(Modifier.weight(1f).padding(start = 10.dp)) { Text("Fastest server (auto)", color = C.Ink, fontWeight = FontWeight.Bold)
+                Art("ic_server_auto", Modifier.size(36.dp)) { Text("⚡", fontSize = 22.sp) }; Column(Modifier.weight(1f).padding(start = 10.dp)) { Text("Fastest server (auto)", color = C.Ink, fontWeight = FontWeight.Bold)
                     Body("Tests the best 8 servers at once and connects to the first that answers. Switches automatically if one stalls.", C.SilverDim, 11) }
                 if (s.autoServer) Text("✓", color = C.Green, fontSize = 18.sp) } }
             Spacer(Modifier.height(6.dp)) }

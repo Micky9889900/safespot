@@ -39,12 +39,12 @@ import kotlinx.coroutines.launch
 object Onboard { fun done(c: android.content.Context) = c.getSharedPreferences("ui", 0).getBoolean("onboarded", false)
     fun finish(c: android.content.Context) = c.getSharedPreferences("ui", 0).edit().putBoolean("onboarded", true).apply() }
 
-private data class Page(val spec: ToolSpec, val title: String, val text: String)
+private data class Page(val spec: ToolSpec, val title: String, val text: String, val art: String = "")
 private val pages = listOf(
-    Page(ToolSpec("", "", "🛡️", Color(0xFFFF5A6E), Color(0xFF8E1B3A), ""), "Find hidden spyware", "SafeSpot checks your apps against known stalkerware and malware databases, on your phone."),
-    Page(ToolSpec("", "", "🌐", Color(0xFF6FA8FF), Color(0xFF2B3BFF), ""), "Free VPN", "Encrypt your connection on public Wi-Fi with free volunteer VPN servers."),
-    Page(ToolSpec("", "", "🧹", Color(0xFFFF9A3C), Color(0xFFE5395B), ""), "Phone care", "Junk cleaner, battery, cooler, booster, Wi-Fi check, speed test: all with real readings."),
-    Page(ToolSpec("", "", "🧞", Color(0xFFB98CFF), Color(0xFF5B3AFF), ""), "Meet your genie", "A little helper that gives tips and tells you what to check next."))
+    Page(ToolSpec("", "", "🛡️", Color(0xFFFF5A6E), Color(0xFF8E1B3A), ""), "Find hidden spyware", "SafeSpot checks your apps against known stalkerware and malware databases, on your phone.", "onb_spyware"),
+    Page(ToolSpec("", "", "🌐", Color(0xFF6FA8FF), Color(0xFF2B3BFF), ""), "Free VPN", "Encrypt your connection on public Wi-Fi with free volunteer VPN servers.", "onb_vpn"),
+    Page(ToolSpec("", "", "🧹", Color(0xFFFF9A3C), Color(0xFFE5395B), ""), "Phone care", "Junk cleaner, battery, cooler, booster, Wi-Fi check, speed test: all with real readings.", "onb_care"),
+    Page(ToolSpec("", "", "🧞", Color(0xFFB98CFF), Color(0xFF5B3AFF), ""), "Meet your genie", "A little helper that gives tips and tells you what to check next.", "onb_genie"))
 
 @Composable
 fun Onboarding(onDone: () -> Unit) {
@@ -71,7 +71,7 @@ private fun Carousel(next: () -> Unit) {
         Row { Spacer(Modifier.weight(1f)); Text("Skip", Modifier.clickable { next() }.padding(8.dp), color = C.SilverDim) }
         HorizontalPager(pager, Modifier.weight(1f)) { i -> val p = pages[i]
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Box(Modifier.size(240.dp).clip(CircleShape).background(Brush.radialGradient(listOf(p.spec.a.copy(alpha = .45f), Color.Transparent))), contentAlignment = Alignment.Center) { ToolOrb(p.spec, 140.dp, pulse = true) }
+                Box(Modifier.size(240.dp).clip(CircleShape).background(Brush.radialGradient(listOf(p.spec.a.copy(alpha = .45f), Color.Transparent))), contentAlignment = Alignment.Center) { if (artId(p.art) != 0) Art(p.art, Modifier.fillMaxSize()) else ToolOrb(p.spec, 140.dp, pulse = true) }
                 Spacer(Modifier.height(24.dp)); Text(p.title, color = C.Ink, fontSize = 26.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(8.dp)); Text(p.text, color = C.Silver, fontSize = 15.sp, textAlign = TextAlign.Center, lineHeight = 21.sp) } }
         Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.Center) { repeat(pages.size) { i ->

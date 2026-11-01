@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
@@ -44,6 +46,15 @@ fun Pill(text: String, color: Color) = Text(text, Modifier.clip(RoundedCornerSha
 
 @Composable
 fun PrimaryButton(text: String, modifier: Modifier = Modifier, color: Color = C.Red, enabled: Boolean = true, onClick: () -> Unit) {
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val sc by animateFloatAsState(if (pressed) .97f else 1f, label = "pb")
+    if (enabled && color == C.Red && artId("btn_primary") != 0) {
+        Box(modifier.scale(sc).height(54.dp).clickable(src, null) { onClick() }, contentAlignment = Alignment.Center) {
+            Art(if (pressed) "btn_primary_pressed" else "btn_primary", Modifier.matchParentSize(), androidx.compose.ui.layout.ContentScale.FillBounds)
+            Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+        return
+    }
     Box(modifier.clip(RoundedCornerShape(16.dp)).background(if (enabled) Brush.horizontalGradient(listOf(color, color.copy(alpha = .7f))) else SolidColor(C.SilverDim.copy(alpha = .3f)))
         .clickable(enabled) { onClick() }.padding(vertical = 14.dp, horizontal = 18.dp), contentAlignment = Alignment.Center) {
         Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
@@ -62,6 +73,7 @@ fun ScoreRing(score: Int?, size: Dp = 200.dp, label: String = "Security score") 
     val anim by animateFloatAsState(target, tween(1400, easing = FastOutSlowInEasing), label = "ring")
     val col = if (score == null) C.SilverDim else C.score(score)
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        Art("frame_score_ring", Modifier.fillMaxSize().scale(1.1f))
         Canvas(Modifier.fillMaxSize()) {
             val sw = this.size.minDimension * .085f
             val inset = sw / 2
@@ -70,6 +82,7 @@ fun ScoreRing(score: Int?, size: Dp = 200.dp, label: String = "Security score") 
             drawArc(Brush.sweepGradient(listOf(col.copy(alpha = .6f), col, col)), 135f, 270f * anim, false, Offset(inset, inset), arc, style = Stroke(sw, cap = StrokeCap.Round))
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Art(when { score == null -> "ic_status_unknown"; score >= 80 -> "ic_status_safe"; else -> "ic_status_risk" }, Modifier.size(size * .2f))
             Text(if (score == null) "--" else "${(anim * 100).toInt()}", color = C.Ink, fontSize = (size.value * .26f).sp, fontWeight = FontWeight.Black)
             Text(label, color = C.SilverDim, fontSize = 12.sp)
             if (score != null) Text(when { score >= 80 -> "Protected"; score >= 55 -> "Needs attention"; else -> "At risk" }, color = col, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -89,7 +102,8 @@ fun Radar(progress: Float, modifier: Modifier = Modifier) {
     val t = rememberInfiniteTransition(label = "radar")
     val ang by t.animateFloat(0f, 360f, infiniteRepeatable(tween(2200, easing = LinearEasing)), label = "a")
     val blips = remember { List(9) { Pair((it * 41 % 360).toFloat(), .25f + (it * 37 % 70) / 100f) } }
-    Canvas(modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) { Art("ill_radar", Modifier.fillMaxSize(), alpha = .9f)
+    Canvas(Modifier.fillMaxSize()) {
         val r = size.minDimension / 2; val c = center
         for (i in 1..4) drawCircle(C.Cyan.copy(alpha = .18f), r * i / 4, c, style = Stroke(1.5f))
         drawLine(C.Cyan.copy(alpha = .15f), Offset(c.x - r, c.y), Offset(c.x + r, c.y)); drawLine(C.Cyan.copy(alpha = .15f), Offset(c.x, c.y - r), Offset(c.x, c.y + r))
@@ -99,7 +113,7 @@ fun Radar(progress: Float, modifier: Modifier = Modifier) {
             drawCircle(C.Cyan.copy(alpha = .3f + .7f * fade), 5f, Offset(c.x + (cos(rad) * r * d).toFloat(), c.y + (sin(rad) * r * d).toFloat()))
         }
         drawArc(C.Green, -90f, 360f * progress, false, Offset(c.x - r, c.y - r), Size(2 * r, 2 * r), style = Stroke(6f, cap = StrokeCap.Round))
-    }
+    } }
 }
 
 /** Donut of risk levels. */
