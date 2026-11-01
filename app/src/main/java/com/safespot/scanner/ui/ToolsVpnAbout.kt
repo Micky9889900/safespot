@@ -51,13 +51,15 @@ fun ToolsScreen(s: AppState) {
     var cloud by remember { mutableStateOf(s.store.cloudLookupConsent) }
     LazyColumn(contentPadding = PaddingValues(16.dp)) {
         item {
-            Title("Tools"); Section("Device health")
+            Title("Tools"); Section("Phone Care")
+            ToolCatalog.care.chunked(2).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { row.forEach { t -> ToolTile(t, Modifier.weight(1f).height(130.dp)) { s.tool = t.id } } }; Spacer(Modifier.height(12.dp)) }
+            Section("Device health")
             if (dh == null) Body("Checking…")
         }
         items(dh?.checks ?: emptyList()) { c -> Glass(pad = 12.dp, onClick = c.settingsAction?.let { a -> { runCatching { ctx.startActivity(Intent(a)) } } }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(10.dp).clip(CircleShape).background(C.level(c.level)))
-                Text("  " + c.title, Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("  " + c.title, Modifier.weight(1f), color = C.Ink, fontWeight = FontWeight.SemiBold)
                 Text(c.value, color = C.level(c.level), fontSize = 12.sp)
             }
             if (c.advice.isNotBlank() && c.level != com.safespot.scanner.scan.Level.GOOD) Body(c.advice + if (c.settingsAction != null) "  ›" else "", C.SilverDim, 12)
@@ -76,8 +78,8 @@ fun ToolsScreen(s: AppState) {
             }
             Section("Databases")
             Glass {
-                Body("Stalkerware indicators: ${s.iocSize} (${s.iocVersion})", Color.White)
-                Body("Malware hash DB: ${s.mdbSize} entries (${s.mdbVersion})", Color.White)
+                Body("Stalkerware indicators: ${s.iocSize} (${s.iocVersion})", C.Ink)
+                Body("Malware hash DB: ${s.mdbSize} entries (${s.mdbVersion})", C.Ink)
                 val chk = ctx.getSharedPreferences("db", 0).getLong("checked", 0)
                 Body("Last update check: ${if (chk == 0L) "never" else DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(chk))}", C.SilverDim, 12)
                 Spacer(Modifier.height(8.dp)); PrimaryButton(if (s.dbBusy) "Updating…" else "Update databases", Modifier.fillMaxWidth(), C.Blue) { s.updateDb() }
@@ -86,15 +88,15 @@ fun ToolsScreen(s: AppState) {
             Section("Scan APK files")
             Glass {
                 Body("Pick a folder (for example Download). SafeSpot computes the SHA-256 of every .apk file and checks it against the malware DB.", C.Silver, 13)
-                Spacer(Modifier.height(8.dp)); PrimaryButton(if (s.fileScanBusy) "Scanning…" else "Choose folder", Modifier.fillMaxWidth(), C.Navy) { folder.launch(null) }
-                s.fileHits.forEach { f -> Spacer(Modifier.height(6.dp)); Text(f.name, color = Color.White, fontSize = 13.sp)
+                Spacer(Modifier.height(8.dp)); PrimaryButton(if (s.fileScanBusy) "Scanning…" else "Choose folder", Modifier.fillMaxWidth(), C.Accent2) { folder.launch(null) }
+                s.fileHits.forEach { f -> Spacer(Modifier.height(6.dp)); Text(f.name, color = C.Ink, fontSize = 13.sp)
                     Body((f.match?.let { "⚠ MALWARE: $it" } ?: "Not in local DB") + (f.cloud?.let { " · Cloud: $it" } ?: ""), if (f.match != null) C.Red else C.Green, 12) }
                 if (s.fileHits.isEmpty() && !s.fileScanBusy) Body("No files scanned yet.", C.SilverDim, 12)
             }
             Section("Cloud lookup (optional)")
             Glass {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Body("Send SHA-256 hashes (never files) of sideloaded apps to MalwareBazaar by abuse.ch", Color.White, 13)
+                    Body("Send SHA-256 hashes (never files) of sideloaded apps to MalwareBazaar by abuse.ch", C.Ink, 13)
                     Spacer(Modifier.weight(1f))
                     Switch(cloud, { cloud = it; s.store.cloudLookupConsent = it }, enabled = Cloud.available)
                 }
@@ -105,7 +107,7 @@ fun ToolsScreen(s: AppState) {
             Section("Protection")
             Glass {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Body("Daily check & reminder", Color.White); Body("Once a day: checks newly installed/updated apps and reminds you to keep your streak.", C.SilverDim, 12) }
+                    Column(Modifier.weight(1f)) { Body("Daily check & reminder", C.Ink); Body("Once a day: checks newly installed/updated apps and reminds you to keep your streak.", C.SilverDim, 12) }
                     Switch(reminder, { on -> reminder = on
                         if (on && Build.VERSION.SDK_INT >= 33) notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS) else { s.store.reminderOn = on; Reminder.schedule(ctx, on) } })
                 }
@@ -117,7 +119,7 @@ fun ToolsScreen(s: AppState) {
 
 @Composable
 fun VpnScreen(s: AppState) {
-    val ctx = LocalContext.current as Activity
+    val ctx = androidx.activity.compose.LocalActivity.current!!
     LaunchedEffect(Unit) { s.loadServers() }
     var picking by remember { mutableStateOf(false) }
     var safeDns by remember { mutableStateOf(s.store.safeDns) }
@@ -142,7 +144,7 @@ fun VpnScreen(s: AppState) {
             val (txt, col) = when (Vpn.state) { Vpn.State.CONNECTED -> "Connected" to C.Green; Vpn.State.CONNECTING -> "Connecting…" to C.Amber; Vpn.State.ERROR -> "Failed" to C.Red; else -> "Not connected" to C.SilverDim }
             Text(txt, color = col, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             if (Vpn.state == Vpn.State.CONNECTED && Vpn.connectedAt > 0) { val sec = (now - Vpn.connectedAt) / 1000
-                Text("%02d:%02d:%02d".format(sec / 3600, sec / 60 % 60, sec % 60), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black) }
+                Text("%02d:%02d:%02d".format(sec / 3600, sec / 60 % 60, sec % 60), color = C.Ink, fontSize = 28.sp, fontWeight = FontWeight.Black) }
             if (Vpn.detail.isNotBlank() && Vpn.state != Vpn.State.CONNECTED) Body(Vpn.detail, C.SilverDim, 11)
             err?.let { Body(it, C.Red, 12) }
             Spacer(Modifier.height(16.dp))
@@ -151,7 +153,7 @@ fun VpnScreen(s: AppState) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(sv?.flag ?: "🌐", fontSize = 30.sp)
                     Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                        Text(sv?.country ?: if (s.loadingServers) "Loading servers…" else "No servers available", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(sv?.country ?: if (s.loadingServers) "Loading servers…" else "No servers available", color = C.Ink, fontWeight = FontWeight.Bold)
                         Body(sv?.let { "${it.host} · ${it.proto.uppercase()} ${it.port} · ${it.provider}" } ?: s.serverSource, C.SilverDim, 12)
                     }
                     sv?.let { PingText(it.pingMs) }; Text("  ›", color = C.Silver, fontSize = 20.sp)
@@ -164,7 +166,7 @@ fun VpnScreen(s: AppState) {
             }
             Spacer(Modifier.height(12.dp))
             Glass(Modifier.fillMaxWidth()) {
-                Row { Text("Live speed", Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.SemiBold)
+                Row { Text("Live speed", Modifier.weight(1f), color = C.Ink, fontWeight = FontWeight.SemiBold)
                     Text("↓ ${fmtBytes((Vpn.speedDown.lastOrNull() ?: 0f).toLong())}/s  ↑ ${fmtBytes((Vpn.speedUp.lastOrNull() ?: 0f).toLong())}/s", color = C.SilverDim, fontSize = 12.sp) }
                 Spacer(Modifier.height(8.dp))
                 LineChart(Vpn.speedDown.toList(), C.Cyan, second = Vpn.speedUp.toList(), secondColor = C.Red)
@@ -172,7 +174,7 @@ fun VpnScreen(s: AppState) {
             Spacer(Modifier.height(12.dp))
             Glass(Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Body("Malware-blocking DNS", Color.White); Body("Uses Quad9 (9.9.9.9), which refuses to resolve known malicious domains. Applies on next connect.", C.SilverDim, 12) }
+                    Column(Modifier.weight(1f)) { Body("Malware-blocking DNS", C.Ink); Body("Uses Quad9 (9.9.9.9), which refuses to resolve known malicious domains. Applies on next connect.", C.SilverDim, 12) }
                     Switch(safeDns, { safeDns = it; s.store.safeDns = it })
                 }
             }
@@ -213,7 +215,7 @@ fun ServerPicker(s: AppState, close: () -> Unit) {
             item { Section("${list.first().flag}  $country (${list.size})") }
             items(list.sortedWith(compareBy<VpnServer> { if (it.pingMs < 0) Int.MAX_VALUE else it.pingMs }.thenByDescending { it.speedMbps }).take(6), key = { it.id }) { sv ->
                 Glass(pad = 12.dp, onClick = { s.selected = sv; close() }) { Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text(sv.host, color = Color.White, fontSize = 13.sp); Body("${sv.proto.uppercase()} ${sv.port}" + if (sv.speedMbps > 0) " · %.0f Mbps listed".format(sv.speedMbps) else "", C.SilverDim, 11) }
+                    Column(Modifier.weight(1f)) { Text(sv.host, color = C.Ink, fontSize = 13.sp); Body("${sv.proto.uppercase()} ${sv.port}" + if (sv.speedMbps > 0) " · %.0f Mbps listed".format(sv.speedMbps) else "", C.SilverDim, 11) }
                     PingText(sv.pingMs) } }
                 Spacer(Modifier.height(6.dp))
             }
@@ -229,24 +231,24 @@ fun AboutScreen() {
     LazyColumn(contentPadding = PaddingValues(16.dp)) { item {
         Title("About SafeSpot"); Body("Version ${BuildConfig.VERSION_NAME}", C.SilverDim, 12)
         Section("What SafeSpot does")
-        Glass { Body("SafeSpot checks the apps on your phone for known stalkerware (by package name and signing certificate), known malware (by APK SHA-256), and warning signs such as accessibility or device-admin abuse, hidden icons and sideloading. Results are indicators, not proof. No app can guarantee a phone is spyware-free; if you feel unsafe, contact a support organisation and consider a factory reset.", Color.White, 13) }
+        Glass { Body("SafeSpot checks the apps on your phone for known stalkerware (by package name and signing certificate), known malware (by APK SHA-256), and warning signs such as accessibility or device-admin abuse, hidden icons and sideloading. Results are indicators, not proof. No app can guarantee a phone is spyware-free; if you feel unsafe, contact a support organisation and consider a factory reset.", C.Ink, 13) }
         Section("Privacy")
-        Glass { Body("Scans run on the device. App lists are never uploaded. The optional cloud lookup sends only file hashes, and only if you turn it on. Ads (Google AdMob) appear only in SafeSpot's screens, never in VPN traffic.", Color.White, 13) }
+        Glass { Body("Scans run on the device. App lists are never uploaded. The optional cloud lookup sends only file hashes, and only if you turn it on. Ads (Google AdMob) appear only in SafeSpot's screens, never in VPN traffic.", C.Ink, 13) }
         Section("Credits & licences")
-        Glass(onClick = { open("https://github.com/AssoEchap/stalkerware-indicators") }) { Text("Stalkerware indicators", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Glass(onClick = { open("https://github.com/AssoEchap/stalkerware-indicators") }) { Text("Stalkerware indicators", color = C.Ink, fontWeight = FontWeight.SemiBold)
             Body("© Echap and contributors, CC BY 4.0. github.com/AssoEchap/stalkerware-indicators", C.SilverDim, 12) }
         Spacer(Modifier.height(8.dp))
-        Glass(onClick = { open("https://www.vpngate.net/") }) { Text("VPN Gate", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Glass(onClick = { open("https://www.vpngate.net/") }) { Text("VPN Gate", color = C.Ink, fontWeight = FontWeight.SemiBold)
             Body("Free relay servers from the VPN Gate Academic Experiment Service, University of Tsukuba. vpngate.net", C.SilverDim, 12) }
         Spacer(Modifier.height(8.dp))
-        Glass(onClick = { open("https://github.com/schwabe/ics-openvpn") }) { Text("ics-openvpn / OpenVPN", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Glass(onClick = { open("https://github.com/schwabe/ics-openvpn") }) { Text("ics-openvpn / OpenVPN", color = C.Ink, fontWeight = FontWeight.SemiBold)
             Body("© Arne Schwabe, GPL-2.0. OpenVPN © OpenVPN Inc. OpenSSL, LZ4, LZO under their own licences.", C.SilverDim, 12) }
         Spacer(Modifier.height(8.dp))
-        Glass(onClick = { open("https://bazaar.abuse.ch/") }) { Text("MalwareBazaar (optional)", color = Color.White, fontWeight = FontWeight.SemiBold); Body("abuse.ch, CC0.", C.SilverDim, 12) }
+        Glass(onClick = { open("https://bazaar.abuse.ch/") }) { Text("MalwareBazaar (optional)", color = C.Ink, fontWeight = FontWeight.SemiBold); Body("abuse.ch, CC0.", C.SilverDim, 12) }
         Spacer(Modifier.height(8.dp))
-        Glass(onClick = { open("https://quad9.net/") }) { Text("Quad9 DNS", color = Color.White, fontWeight = FontWeight.SemiBold); Body("Malware-blocking DNS resolver, quad9.net", C.SilverDim, 12) }
+        Glass(onClick = { open("https://quad9.net/") }) { Text("Quad9 DNS", color = C.Ink, fontWeight = FontWeight.SemiBold); Body("Malware-blocking DNS resolver, quad9.net", C.SilverDim, 12) }
         Section("Source code")
-        Glass { Body("SafeSpot is free software under the GNU GPL v3. You can get the source code, change it and share it under the same licence.", Color.White, 13) }
+        Glass { Body("SafeSpot is free software under the GNU GPL v3. You can get the source code, change it and share it under the same licence.", C.Ink, 13) }
         Spacer(Modifier.height(80.dp))
     } }
 }

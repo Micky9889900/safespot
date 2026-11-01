@@ -11,6 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,6 +35,7 @@ class MainActivity : ComponentActivity() {
         if (crash != null) { setContent { SafeSpotTheme { CrashScreen(crash) { CrashReporter.clear(this); recreate() } } }; return }
         try { Vpn.init(this) } catch (t: Throwable) { CrashReporter.nonFatal("Vpn.init", t) }
         try { Ads.init(this) } catch (t: Throwable) { CrashReporter.nonFatal("Ads.init", t) }
+        runCatching { Themes.selected = Themes.pref(this); GenieProfile.load(this); com.safespot.scanner.care.Battery.record(this) }
         val state = AppState(applicationContext)
         try { if (state.store.reminderOn) Reminder.schedule(this, true) } catch (t: Throwable) { CrashReporter.nonFatal("Reminder.schedule", t) }
         setContent { SafeSpotTheme { Root(state) } }
@@ -57,26 +62,43 @@ fun CrashScreen(report: String, onContinue: () -> Unit) {
 }
 
 private val tabs = listOf(Triple("home", "Home", Icons.Filled.Home), Triple("scan", "Scan", Icons.Filled.Search), Triple("vpn", "VPN", Icons.Filled.VpnKey),
-    Triple("tools", "Tools", Icons.Filled.Build), Triple("about", "About", Icons.Filled.Info))
+    Triple("tools", "Tools", Icons.Filled.Build), Triple("me", "Me", Icons.Filled.Person))
 
 @androidx.compose.runtime.Composable
 fun Root(s: AppState) {
-    BackHandler(s.detail != null || s.showDiag || s.tab != "home") { when { s.detail != null -> s.detail = null; s.showDiag -> s.showDiag = false; else -> s.tab = "home" } }
-    Scaffold(containerColor = Color.Transparent, modifier = Modifier.background(C.bgBrush),
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var onboarded by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(Onboard.done(ctx)) }
+    val phase = rememberBgPhase()
+    if (!onboarded) { Box(Modifier.fillMaxSize().animatedBg(phase)) { Onboarding { onboarded = true } }; return }
+    val act = androidx.activity.compose.LocalActivity.current
+    BackHandler(s.detail != null || s.showDiag || s.tool != null || s.tab != "home") { when {
+        s.detail != null -> s.detail = null; s.showDiag -> s.showDiag = false
+        s.tool != null -> if (act != null) Ads.onReturnFromTool(act) { s.tool = null } else s.tool = null
+        s.tab == "about" -> s.tab = "me"; else -> s.tab = "home" } }
+    Box(Modifier.fillMaxSize().animatedBg(phase)) {
+    Scaffold(containerColor = Color.Transparent,
         bottomBar = { Column {
-            BannerAd()
+            // Banner only on Home and tool lists, never on a tool's result screen (those carry one native ad).
+            if (s.tool == null && s.detail == null && (s.tab == "home" || s.tab == "tools")) BannerAd()
             NavigationBar(containerColor = C.NavyDeep.copy(alpha = .96f)) {
-                tabs.forEach { (k, l, ic: ImageVector) -> NavigationBarItem(s.tab == k && s.detail == null && !s.showDiag, { s.tab = k; s.detail = null; s.showDiag = false },
-                    { Icon(ic, l) }, label = { Text(l) }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.White, selectedTextColor = Color.White,
-                        indicatorColor = C.Red.copy(alpha = .35f), unselectedIconColor = C.SilverDim, unselectedTextColor = C.SilverDim)) }
+                tabs.forEach { (k, l, ic: ImageVector) -> val sel = (s.tab == k || (k == "me" && s.tab == "about")) && s.detail == null && !s.showDiag && s.tool == null
+                    val sc by androidx.compose.animation.core.animateFloatAsState(if (sel) 1.25f else 1f, androidx.compose.animation.core.spring(.4f), label = "nav")
+                    NavigationBarItem(sel, { s.tab = k; s.detail = null; s.showDiag = false; s.tool = null },
+                    { Icon(ic, l, Modifier.graphicsLayer { scaleX = sc; scaleY = sc; translationY = if (sel) -4f else 0f }) }, label = { Text(l) }, colors = NavigationBarItemDefaults.colors(selectedIconColor = C.Ink, selectedTextColor = C.Ink,
+                        indicatorColor = C.Accent.copy(alpha = .3f), unselectedIconColor = C.SilverDim, unselectedTextColor = C.SilverDim)) }
             } } }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
-            val d = s.detail
-            when {
-                d != null -> AppDetail(d) { s.detail = null }
-                s.showDiag -> Diagnostics(s) { s.showDiag = false }
-                else -> when (s.tab) { "home" -> HomeScreen(s); "scan" -> ScanScreen(s); "vpn" -> VpnScreen(s); "tools" -> ToolsScreen(s); else -> AboutScreen() }
+            val key = when { s.detail != null -> "detail"; s.showDiag -> "diag"; s.tool != null -> "tool:" + s.tool; else -> s.tab }
+            androidx.compose.animation.AnimatedContent(key, transitionSpec = { (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)) + androidx.compose.animation.scaleIn(initialScale = .97f)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)) }, label = "screen") { k ->
+                when {
+                    k == "detail" -> s.detail?.let { d -> AppDetail(d) { s.detail = null } }
+                    k == "diag" -> Diagnostics(s) { s.showDiag = false }
+                    k.startsWith("tool:") -> ToolHost(s, k.removePrefix("tool:"))
+                    else -> when (k) { "home" -> HomeScreen(s); "scan" -> ScanScreen(s); "vpn" -> VpnScreen(s); "tools" -> ToolsScreen(s); "me" -> MeScreen(s); else -> AboutScreen() }
+                }
             }
+            GenieOverlay(s)
         }
+    }
     }
 }

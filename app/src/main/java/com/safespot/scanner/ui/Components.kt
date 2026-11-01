@@ -29,12 +29,12 @@ import kotlin.math.sin
 fun Glass(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, pad: Dp = 16.dp, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     Column(modifier.clip(shape)
-        .background(Brush.linearGradient(listOf(Color(0x26FFFFFF), Color(0x0DFFFFFF))))
-        .border(1.dp, Brush.linearGradient(listOf(C.GlassBorder, Color(0x0DFFFFFF))), shape)
+        .background(if (C.dark) Brush.linearGradient(listOf(C.Glass.copy(alpha = C.Glass.alpha * 1.5f), C.Glass.copy(alpha = C.Glass.alpha * .5f))) else Brush.linearGradient(listOf(C.Glass, C.Glass)))
+        .border(1.dp, Brush.linearGradient(listOf(C.GlassBorder, C.GlassBorder.copy(alpha = .05f))), shape)
         .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier).padding(pad), content = content)
 }
 
-@Composable fun Title(t: String, modifier: Modifier = Modifier) = Text(t, modifier, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+@Composable fun Title(t: String, modifier: Modifier = Modifier) = Text(t, modifier, color = C.Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
 @Composable fun Section(t: String) = Text(t.uppercase(), Modifier.padding(top = 18.dp, bottom = 8.dp), color = C.SilverDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp)
 @Composable fun Body(t: String, color: Color = C.Silver, size: Int = 14) = Text(t, color = color, fontSize = size.sp, lineHeight = (size + 6).sp)
 
@@ -44,7 +44,7 @@ fun Pill(text: String, color: Color) = Text(text, Modifier.clip(RoundedCornerSha
 
 @Composable
 fun PrimaryButton(text: String, modifier: Modifier = Modifier, color: Color = C.Red, enabled: Boolean = true, onClick: () -> Unit) {
-    Box(modifier.clip(RoundedCornerShape(16.dp)).background(if (enabled) Brush.horizontalGradient(listOf(color, color.copy(alpha = .7f))) else SolidColor(Color(0x22FFFFFF)))
+    Box(modifier.clip(RoundedCornerShape(16.dp)).background(if (enabled) Brush.horizontalGradient(listOf(color, color.copy(alpha = .7f))) else SolidColor(C.SilverDim.copy(alpha = .3f)))
         .clickable(enabled) { onClick() }.padding(vertical = 14.dp, horizontal = 18.dp), contentAlignment = Alignment.Center) {
         Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
     }
@@ -66,11 +66,11 @@ fun ScoreRing(score: Int?, size: Dp = 200.dp, label: String = "Security score") 
             val sw = this.size.minDimension * .085f
             val inset = sw / 2
             val arc = Size(this.size.width - sw, this.size.height - sw)
-            drawArc(Color(0x22FFFFFF), 135f, 270f, false, Offset(inset, inset), arc, style = Stroke(sw, cap = StrokeCap.Round))
+            drawArc(C.SilverDim.copy(alpha = .2f), 135f, 270f, false, Offset(inset, inset), arc, style = Stroke(sw, cap = StrokeCap.Round))
             drawArc(Brush.sweepGradient(listOf(col.copy(alpha = .6f), col, col)), 135f, 270f * anim, false, Offset(inset, inset), arc, style = Stroke(sw, cap = StrokeCap.Round))
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(if (score == null) "--" else "${(anim * 100).toInt()}", color = Color.White, fontSize = (size.value * .26f).sp, fontWeight = FontWeight.Black)
+            Text(if (score == null) "--" else "${(anim * 100).toInt()}", color = C.Ink, fontSize = (size.value * .26f).sp, fontWeight = FontWeight.Black)
             Text(label, color = C.SilverDim, fontSize = 12.sp)
             if (score != null) Text(when { score >= 80 -> "Protected"; score >= 55 -> "Needs attention"; else -> "At risk" }, color = col, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
@@ -111,10 +111,10 @@ fun Donut(parts: List<Pair<Float, Color>>, center: String, sub: String, modifier
         Canvas(Modifier.fillMaxSize()) {
             val sw = size.minDimension * .16f; var start = -90f
             val tl = Offset(sw / 2, sw / 2); val s = Size(size.width - sw, size.height - sw)
-            drawArc(Color(0x22FFFFFF), 0f, 360f, false, tl, s, style = Stroke(sw))
+            drawArc(C.SilverDim.copy(alpha = .2f), 0f, 360f, false, tl, s, style = Stroke(sw))
             parts.forEach { (v, col) -> val sweep = 360f * v / total * anim; if (sweep > 0) drawArc(col, start, max(sweep - 1.5f, .5f), false, tl, s, style = Stroke(sw)); start += sweep }
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(center, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black); Text(sub, color = C.SilverDim, fontSize = 11.sp) }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(center, color = C.Ink, fontSize = 24.sp, fontWeight = FontWeight.Black); Text(sub, color = C.SilverDim, fontSize = 11.sp) }
     }
 }
 
@@ -126,10 +126,10 @@ fun Bars(items: List<Pair<String, Int>>, color: Color = C.Blue) {
         val a by animateFloatAsState(v.toFloat() / mx, tween(900), label = l)
         Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(l, Modifier.width(118.dp), color = C.Silver, fontSize = 12.sp, maxLines = 1)
-            Box(Modifier.weight(1f).height(10.dp).clip(RoundedCornerShape(5.dp)).background(Color(0x1AFFFFFF))) {
+            Box(Modifier.weight(1f).height(10.dp).clip(RoundedCornerShape(5.dp)).background(C.SilverDim.copy(alpha = .15f))) {
                 Box(Modifier.fillMaxWidth(a).fillMaxHeight().clip(RoundedCornerShape(5.dp)).background(Brush.horizontalGradient(listOf(color.copy(alpha = .6f), color))))
             }
-            Text("$v", Modifier.width(34.dp).padding(start = 6.dp), color = Color.White, fontSize = 12.sp)
+            Text("$v", Modifier.width(34.dp).padding(start = 6.dp), color = C.Ink, fontSize = 12.sp)
         }
     }
 }
@@ -138,7 +138,7 @@ fun Bars(items: List<Pair<String, Int>>, color: Color = C.Blue) {
 @Composable
 fun LineChart(values: List<Float>, color: Color, modifier: Modifier = Modifier.fillMaxWidth().height(120.dp), fixedMax: Float? = null, second: List<Float>? = null, secondColor: Color = C.Red) {
     Canvas(modifier) {
-        for (i in 0..3) drawLine(Color(0x14FFFFFF), Offset(0f, size.height * i / 3), Offset(size.width, size.height * i / 3))
+        for (i in 0..3) drawLine(C.SilverDim.copy(alpha = .15f), Offset(0f, size.height * i / 3), Offset(size.width, size.height * i / 3))
         val mx = fixedMax ?: max((values + (second ?: emptyList())).maxOrNull() ?: 1f, 1f)
         fun draw(v: List<Float>, col: Color, fill: Boolean) {
             if (v.size < 2) { v.firstOrNull()?.let { drawCircle(col, 6f, Offset(size.width / 2, size.height * (1 - it / mx))) }; return }

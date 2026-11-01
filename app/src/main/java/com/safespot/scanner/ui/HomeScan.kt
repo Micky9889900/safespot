@@ -30,25 +30,15 @@ fun HomeScreen(s: AppState) {
     val r = s.result; val st = s.store; s.historyTick
     val last = st.history().lastOrNull()
     LazyColumn(contentPadding = PaddingValues(16.dp)) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Title("SafeSpot"); Body("Spy Scanner & VPN", C.SilverDim, 13) }
-                if (st.streak > 0) Pill("🔥 ${st.streak}-day streak", C.Amber)
-            }
-            Spacer(Modifier.height(12.dp))
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { ScoreRing(r?.score ?: last?.score, 210.dp) }
-            Body(if (st.lastScan == 0L) "No scan yet: run your first scan to get a score." else "Last scan ${fmtAgo(st.lastScan)}" + if (r == null) " (score from last scan)" else "",
-                C.SilverDim, 13)
-            Spacer(Modifier.height(12.dp))
-            PrimaryButton(if (s.scanning) "Scanning…" else "Scan now", Modifier.fillMaxWidth()) { s.scan(false) }
-        }
+        item { HomeHero(s) }
+        item { StatusChips(s) }
         if (s.newAppAlerts.isNotEmpty()) item { Spacer(Modifier.height(12.dp))
             Glass(onClick = { s.detail = s.newAppAlerts.first() }) { Text("⚠ New/updated app needs a look", color = C.Amber, fontWeight = FontWeight.Bold)
                 Body(s.newAppAlerts.joinToString { "${it.label} (${it.risk.label})" }) } }
         item {
             Section("Overview")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard(r?.apps?.size?.toString() ?: last?.apps?.toString() ?: "--", "Apps scanned", Color.White, Modifier.weight(1f))
+                StatCard(r?.apps?.size?.toString() ?: last?.apps?.toString() ?: "--", "Apps scanned", C.Ink, Modifier.weight(1f))
                 StatCard(r?.risky?.size?.toString() ?: last?.risky?.toString() ?: "--", "Risky apps", if ((r?.risky?.size ?: last?.risky ?: 0) > 0) C.Amber else C.Green, Modifier.weight(1f))
             }
             Spacer(Modifier.height(10.dp))
@@ -72,22 +62,17 @@ fun HomeScreen(s: AppState) {
                 th.forEach { a -> Spacer(Modifier.height(8.dp)); ThreatRow(a) { s.detail = a } }
             }
         }
-        item {
-            Section("Quick actions")
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Glass(Modifier.weight(1f), onClick = { s.tab = "vpn" }) { Text("🌐", fontSize = 22.sp); Body(if (Vpn.state == Vpn.State.CONNECTED) "VPN on" else "Connect VPN", Color.White) }
-                Glass(Modifier.weight(1f), onClick = { s.showDiag = true }) { Text("📊", fontSize = 22.sp); Body("Diagnostics", Color.White) }
-                Glass(Modifier.weight(1f), onClick = { s.tab = "tools" }) { Text("🩺", fontSize = 22.sp); Body("Device health", Color.White) }
-            }
-        }
-        item { Section("Tip of the day"); Glass { Body("💡 " + Store.tipOfDay(), Color.White) } }
+        item { Recommended(s) }
+        item { Section("Tools"); HomeGrid(s) }
+        item { Section("Tip of the day"); Glass { Body("💡 " + Store.tipOfDay(), C.Ink) } }
+        item { Timeline(s) }
         item {
             Section("Achievements")
             val un = st.unlocked
-            Glass { st.badges.chunked(3).forEach { row -> Row { row.forEach { b ->
-                Column(Modifier.weight(1f).padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(b.icon, fontSize = 26.sp, color = if (b.id in un) Color.White else Color(0x44FFFFFF))
-                    Text(b.title, color = if (b.id in un) Color.White else C.SilverDim, fontSize = 11.sp, maxLines = 1) } } } } }
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) { items(st.badges.sortedByDescending { it.id in un }) { b ->
+                Glass(Modifier.width(96.dp), pad = 10.dp) { Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(b.icon, fontSize = 30.sp, color = if (b.id in un) C.Ink else C.SilverDim.copy(alpha = .4f), modifier = Modifier.graphicsLayerAlpha(if (b.id in un) 1f else .35f))
+                    Text(b.title, color = if (b.id in un) C.Ink else C.SilverDim, fontSize = 11.sp, maxLines = 2, lineHeight = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center) } } } }
             Spacer(Modifier.height(80.dp))
         }
     }
@@ -98,7 +83,7 @@ fun ThreatRow(a: AppReport, onClick: () -> Unit) {
     val ctx = LocalContext.current
     Glass(onClick = onClick, pad = 12.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text(a.label, color = Color.White, fontWeight = FontWeight.Bold); Body(a.malwareMatch ?: a.iocMatch ?: a.findings.firstOrNull()?.title ?: "", C.Red, 12) }
+            Column(Modifier.weight(1f)) { Text(a.label, color = C.Ink, fontWeight = FontWeight.Bold); Body(a.malwareMatch ?: a.iocMatch ?: a.findings.firstOrNull()?.title ?: "", C.Red, 12) }
             GhostButton("Uninstall", color = C.Red) { uninstall(ctx, a.pkg) }
         }
     }
@@ -109,12 +94,12 @@ fun appSettings(ctx: android.content.Context, pkg: String) = ctx.startActivity(I
 
 @Composable
 fun ScanScreen(s: AppState) {
-    val act = LocalContext.current as Activity
+    val act = androidx.activity.compose.LocalActivity.current!!
     if (s.scanning) {
         Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Radar(s.progress, Modifier.size(260.dp))
             Spacer(Modifier.height(24.dp))
-            Text("${(s.progress * 100).toInt()}%", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black)
+            Text("${(s.progress * 100).toInt()}%", color = C.Ink, fontSize = 34.sp, fontWeight = FontWeight.Black)
             Body("Checking app ${s.scanned}: ${s.currentApp}", C.Silver, 13)
             Body("Signatures · permissions · accessibility · admins · install source", C.SilverDim, 12)
         }
@@ -152,7 +137,7 @@ fun ScanScreen(s: AppState) {
                 }
             }
             if (!r.deep) { Spacer(Modifier.height(10.dp)); PrimaryButton("Unlock deep scan (watch an ad)", Modifier.fillMaxWidth(), C.Blue) { Ads.rewarded(act) { ok -> if (ok) s.scan(true) { Ads.interstitial(act) } } } }
-            if (s.newBadges.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Glass { Text("🏅 Achievement unlocked", color = C.Amber, fontWeight = FontWeight.Bold); Body(s.newBadges.joinToString { "${it.icon} ${it.title}" }, Color.White) } }
+            if (s.newBadges.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Glass { Text("🏅 Achievement unlocked", color = C.Amber, fontWeight = FontWeight.Bold); Body(s.newBadges.joinToString { "${it.icon} ${it.title}" }, C.Ink) } }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("risky" to "Risky", "access" to "Access", "hidden" to "Hidden", "sideload" to "Sideloaded", "all" to "All").forEach { (k, l) ->
@@ -170,7 +155,7 @@ fun ScanScreen(s: AppState) {
 fun AppRow(a: AppReport, onClick: () -> Unit) = Glass(onClick = onClick, pad = 12.dp) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(a.label, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(a.label, color = C.Ink, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(a.pkg, color = C.SilverDim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (a.findings.isNotEmpty()) Text(a.findings.take(2).joinToString(" · ") { it.title }, color = C.Silver, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -192,7 +177,7 @@ fun AppDetail(a: AppReport, back: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PrimaryButton("Uninstall", Modifier.weight(1f)) { uninstall(ctx, a.pkg) }
-                PrimaryButton("App settings / Disable", Modifier.weight(1f), C.Navy) { appSettings(ctx, a.pkg) }
+                PrimaryButton("App settings / Disable", Modifier.weight(1f), C.Accent2) { appSettings(ctx, a.pkg) }
             }
             if (a.accessibilityOn || a.deviceAdmin || a.notifListener) { Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -204,7 +189,7 @@ fun AppDetail(a: AppReport, back: () -> Unit) {
             Section("Why")
             if (a.findings.isEmpty()) Body("No warning signs found.", C.Green)
         }
-        items(a.findings) { f -> Glass(pad = 12.dp) { Row { Text(f.title, Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.SemiBold); Text("+${f.points}", color = C.Amber) }; Body(f.detail, C.Silver, 13) }; Spacer(Modifier.height(8.dp)) }
+        items(a.findings) { f -> Glass(pad = 12.dp) { Row { Text(f.title, Modifier.weight(1f), color = C.Ink, fontWeight = FontWeight.SemiBold); Text("+${f.points}", color = C.Amber) }; Body(f.detail, C.Silver, 13) }; Spacer(Modifier.height(8.dp)) }
         item {
             Section("Facts")
             Glass {
@@ -212,11 +197,11 @@ fun AppDetail(a: AppReport, back: () -> Unit) {
                 listOf("Install source" to "${a.source.label}${a.installer?.let { " ($it)" } ?: ""}", "Launcher icon" to if (a.hasLauncher) "Yes" else "No (hidden)",
                     "Installed" to df.format(Date(a.firstInstall)), "Updated" to df.format(Date(a.lastUpdate)),
                     "Signing cert SHA-256" to (a.certSha256.firstOrNull() ?: "?"), "APK SHA-256" to (a.apkSha256 ?: "not hashed (quick scan)")).forEach { (k, v) ->
-                    Text(k, color = C.SilverDim, fontSize = 11.sp); Text(v, color = Color.White, fontSize = 13.sp); Spacer(Modifier.height(6.dp)) }
+                    Text(k, color = C.SilverDim, fontSize = 11.sp); Text(v, color = C.Ink, fontSize = 13.sp); Spacer(Modifier.height(6.dp)) }
             }
             Section("Permissions granted (${a.grantedPerms.size})")
             Glass { a.grantedPerms.sortedByDescending { Permissions.map[it]?.weight ?: 0 }.forEach { p -> val info = Permissions.map[p]
-                Text(p.substringAfterLast('.'), color = if ((info?.weight ?: 0) >= 8) C.Amber else Color.White, fontSize = 13.sp)
+                Text(p.substringAfterLast('.'), color = if ((info?.weight ?: 0) >= 8) C.Amber else C.Ink, fontSize = 13.sp)
                 info?.let { Body(it.explain, C.SilverDim, 11) }; Spacer(Modifier.height(4.dp)) }
                 if (a.grantedPerms.isEmpty()) Body("None") }
             Spacer(Modifier.height(80.dp))
@@ -238,7 +223,7 @@ fun Diagnostics(s: AppState, back: () -> Unit) {
                     Donut(parts, "${r.apps.size}", "apps")
                     Column(Modifier.padding(start = 16.dp)) { Risk.values().forEach { lv -> Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(10.dp).padding(1.dp)) { androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) { drawCircle(C.risk(lv)) } }
-                        Text("  ${lv.label}: ${r.apps.count { it.risk == lv }}", color = Color.White, fontSize = 13.sp) } } }
+                        Text("  ${lv.label}: ${r.apps.count { it.risk == lv }}", color = C.Ink, fontSize = 13.sp) } } }
                 }
             }
             Section("Apps per sensitive permission")

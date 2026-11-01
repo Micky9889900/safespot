@@ -13,11 +13,15 @@ val admobTestAppId = "ca-app-pub-3940256099942544~3347511713"
 val admobTestBanner = "ca-app-pub-3940256099942544/9214589741"
 val admobTestInterstitial = "ca-app-pub-3940256099942544/1033173712"
 val admobTestRewarded = "ca-app-pub-3940256099942544/5224354917"
+val admobTestNative = "ca-app-pub-3940256099942544/2247696110"
+val admobTestAppOpen = "ca-app-pub-3940256099942544/9257395921"
 
 val admobReleaseAppId = admobTestAppId          // TODO real
 val admobReleaseBanner = admobTestBanner        // TODO real
 val admobReleaseInterstitial = admobTestInterstitial // TODO real
 val admobReleaseRewarded = admobTestRewarded    // TODO real
+val admobReleaseNative = admobTestNative        // TODO real
+val admobReleaseAppOpen = admobTestAppOpen      // TODO real
 // ============================================================================
 
 val keystorePropsFile = rootProject.file("keystore/keystore.properties")
@@ -35,8 +39,8 @@ android {
         applicationId = "com.safespot.scanner"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.1.0"
         ndk { abiFilters += ((project.findProperty("abis") as String?) ?: "arm64-v8a,armeabi-v7a,x86_64").split(",") }
         buildConfigField("String", "SERVERS_URL", "\"https://micky9889900.github.io/vpn/servers.json\"")
         buildConfigField("String", "MB_AUTH_KEY", "\"${(project.findProperty("mbAuthKey") ?: "")}\"")
@@ -68,12 +72,16 @@ android {
             buildConfigField("String", "AD_BANNER_ID", "\"$admobTestBanner\"")
             buildConfigField("String", "AD_INTERSTITIAL_ID", "\"$admobTestInterstitial\"")
             buildConfigField("String", "AD_REWARDED_ID", "\"$admobTestRewarded\"")
+            buildConfigField("String", "AD_NATIVE_ID", "\"$admobTestNative\"")
+            buildConfigField("String", "AD_APP_OPEN_ID", "\"$admobTestAppOpen\"")
         }
         release {
             resValue("string", "admob_app_id", admobReleaseAppId)
             buildConfigField("String", "AD_BANNER_ID", "\"$admobReleaseBanner\"")
             buildConfigField("String", "AD_INTERSTITIAL_ID", "\"$admobReleaseInterstitial\"")
             buildConfigField("String", "AD_REWARDED_ID", "\"$admobReleaseRewarded\"")
+            buildConfigField("String", "AD_NATIVE_ID", "\"$admobReleaseNative\"")
+            buildConfigField("String", "AD_APP_OPEN_ID", "\"$admobReleaseAppOpen\"")
             isMinifyEnabled = false
             isShrinkResources = false
             if (keystorePropsFile.exists()) signingConfig = signingConfigs.getByName("release")
@@ -102,6 +110,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("com.google.android.gms:play-services-ads:25.4.0")
     implementation("com.google.android.ump:user-messaging-platform:3.2.0")
     testImplementation("junit:junit:4.13.2")

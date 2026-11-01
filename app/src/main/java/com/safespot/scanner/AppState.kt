@@ -24,6 +24,20 @@ class AppState(private val ctx: Context) {
     var tab by mutableStateOf("home")
     var detail by mutableStateOf<AppReport?>(null)
     var showDiag by mutableStateOf(false)
+    /** Open Phone Care tool id (junk, battery, cooler, booster, apps, wifi, perms, notif, speed, storage) or null. */
+    var tool by mutableStateOf<String?>(null)
+    /** Transient genie reaction after a real event (mood + text), cleared by the overlay after a few seconds. */
+    var genieEvent by mutableStateOf<Pair<com.safespot.scanner.ui.Mood, String>?>(null)
+    fun react(m: com.safespot.scanner.ui.Mood, text: String) { genieEvent = m to text }
+    /** Activity timeline (real events only), newest first. */
+    fun log(icon: String, text: String) { val p = ctx.getSharedPreferences("activity", 0)
+        val a = runCatching { org.json.JSONArray(p.getString("a", "[]")) }.getOrDefault(org.json.JSONArray())
+        a.put(org.json.JSONObject().put("t", System.currentTimeMillis()).put("i", icon).put("x", text))
+        val keep = org.json.JSONArray(); for (k in maxOf(0, a.length() - 30) until a.length()) keep.put(a.get(k))
+        p.edit().putString("a", keep.toString()).apply(); activityTick++ }
+    var activityTick by mutableIntStateOf(0); private set
+    fun activity(): List<Triple<Long, String, String>> = runCatching { val a = org.json.JSONArray(ctx.getSharedPreferences("activity", 0).getString("a", "[]"))
+        (0 until a.length()).map { val o = a.getJSONObject(it); Triple(o.getLong("t"), o.getString("i"), o.getString("x")) }.reversed() }.getOrDefault(emptyList())
 
     var result by mutableStateOf<ScanResult?>(null); private set
     var scanning by mutableStateOf(false); private set
@@ -69,7 +83,10 @@ class AppState(private val ctx: Context) {
             }
             result = r; device = r.device; newBadges = store.record(r); historyTick++
             ctx.getSharedPreferences("safespot", 0).edit().putLong("rtCheck", System.currentTimeMillis()).apply()
-            newAppAlerts = emptyList(); scanning = false; done()
+            newAppAlerts = emptyList(); scanning = false
+            log("🛡", "Scan: score ${r.score}, ${r.risky.size} risky of ${r.apps.size} apps")
+            react(if (r.risky.isEmpty()) com.safespot.scanner.ui.Mood.CHEER else com.safespot.scanner.ui.Mood.WORRIED, if (r.risky.isEmpty()) "All clear! Score ${r.score}. Try the Junk Cleaner next." else "I found ${r.risky.size} app(s) to review. Check them first.")
+            done()
         }
     }
 
