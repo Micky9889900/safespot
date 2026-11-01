@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
 fun CrashScreen(report: String, onContinue: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     Column(Modifier.fillMaxSize().background(C.bgBrush).systemBarsPadding().padding(16.dp)) {
+        com.safespot.scanner.ui.Art("ill_crash", Modifier.size(140.dp).align(androidx.compose.ui.Alignment.CenterHorizontally))
         Text("Crash report", color = Color.White, style = MaterialTheme.typography.headlineSmall)
         Text("SafeSpot closed unexpectedly last time. Please tap Copy and send this to sipofdiamond@gmail.com so we can fix it.", color = C.SilverDim, modifier = Modifier.padding(vertical = 8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -222,7 +222,7 @@ fun ServerPicker(s: AppState, close: () -> Unit) {
     val byCountry = s.servers.groupBy { it.country }.toList().sortedBy { it.first }
     LazyColumn(contentPadding = PaddingValues(16.dp)) {
         item { Row(verticalAlignment = Alignment.CenterVertically) { GhostButton("← Back") { close() }; Spacer(Modifier.weight(1f)); GhostButton(if (s.loadingServers) "…" else "Refresh") { s.loadServers(true) } }
-            Spacer(Modifier.height(8.dp)); Title("Choose a location"); Body("${s.servers.size} servers · ${s.serverSource}", C.SilverDim, 12); Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp)); Title("Choose a location"); if (s.servers.isEmpty()) Art("empty_offline", Modifier.size(120.dp)); Body("${s.servers.size} servers · ${s.serverSource}", C.SilverDim, 12); Spacer(Modifier.height(8.dp))
             Glass(pad = 12.dp, onClick = { s.setAuto(true); close() }) { Row(verticalAlignment = Alignment.CenterVertically) {
                 Art("ic_server_auto", Modifier.size(36.dp)) { Text("⚡", fontSize = 22.sp) }; Column(Modifier.weight(1f).padding(start = 10.dp)) { Text("Fastest server (auto)", color = C.Ink, fontWeight = FontWeight.Bold)
                     Body("Tests the best 8 servers at once and connects to the first that answers. Switches automatically if one stalls.", C.SilverDim, 11) }

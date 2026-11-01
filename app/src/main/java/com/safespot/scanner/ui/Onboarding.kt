@@ -117,7 +117,8 @@ fun ThemePicker() {
         Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).border(2.dp, if (sel) C.Accent else C.GlassBorder, RoundedCornerShape(18.dp)).clickable { Themes.selected = id; Themes.save(ctx, id) }) {
             Box(Modifier.fillMaxWidth().height(70.dp).background(if (p == null) Brush.horizontalGradient(listOf(Themes.navy.top, Themes.light.top)) else Brush.verticalGradient(listOf(pal.top, pal.bottom)))) {
                 Row(Modifier.align(Alignment.BottomStart).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(pal.accent, pal.accent2, pal.green).forEach { Box(Modifier.size(14.dp).clip(CircleShape).background(it)) } }
-                Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(30.dp, 18.dp).clip(RoundedCornerShape(6.dp)).background(pal.glass.copy(alpha = maxOf(pal.glass.alpha, .3f)))) }
+                Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(30.dp, 18.dp).clip(RoundedCornerShape(6.dp)).background(pal.glass.copy(alpha = maxOf(pal.glass.alpha, .3f))))
+                Art("theme_" + (if (p == null) "system" else id), Modifier.align(Alignment.Center).fillMaxHeight()) }
             Text((if (sel) "✓ " else "") + (p?.name ?: "Follow system"), Modifier.padding(10.dp), color = C.Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) } }
         if (row.size == 1) Spacer(Modifier.weight(1f)) }; Spacer(Modifier.height(10.dp)) }
 }
@@ -128,14 +129,15 @@ fun MeScreen(s: com.safespot.scanner.AppState) {
     var editGenie by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Title("Me & Settings")
-        Section("Your genie")
+        Row(verticalAlignment = Alignment.CenterVertically) { Art("ic_set_genie", Modifier.size(36.dp)); Section("Your genie") }
         Glass { if (editGenie) GeniePicker(false) { editGenie = false } else Row(verticalAlignment = Alignment.CenterVertically) {
             val ctx = LocalContext.current; val (res, _) = remember(GenieProfile.gender) { GenieProfile.pose(ctx, GenieProfile.gender, Mood.HAPPY) }
             if (res != 0) Image(painterResource(res), null, Modifier.height(80.dp))
             Column(Modifier.weight(1f).padding(start = 12.dp)) { Text(GenieProfile.name, color = C.Ink, fontWeight = FontWeight.Bold, fontSize = 18.sp); Body(if (GenieProfile.gender == "female") "Girl genie" else "Boy genie", C.SilverDim, 12) }
             GhostButton("Change") { editGenie = true } } }
-        Section("Theme"); ThemePicker()
+        Row(verticalAlignment = Alignment.CenterVertically) { Art("ic_set_theme", Modifier.size(36.dp)); Section("Theme") }; ThemePicker()
         Section("About")
+        Row(verticalAlignment = Alignment.CenterVertically) { Art("ic_set_about", Modifier.size(36.dp)); Spacer(Modifier.width(8.dp)) }
         GhostButton("About SafeSpot, privacy & licences", Modifier.fillMaxWidth()) { s.tab = "about" }
         Spacer(Modifier.height(90.dp))
     }

@@ -233,7 +233,7 @@ fun Diagnostics(s: AppState, back: () -> Unit) {
             Body("User-installed apps only.", C.SilverDim, 11)
             Section("Score history")
             Glass {
-                if (h.isEmpty()) Body("No scans yet.") else {
+                if (h.isEmpty()) Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) { Art("empty_no_history", Modifier.size(140.dp)); Body("No scans yet.") } else {
                     LineChart(h.map { it.score.toFloat() }, C.Green, fixedMax = 100f)
                     Body("${h.size} scans · best ${h.maxOf { it.score }} · latest ${h.last().score}", C.SilverDim, 12)
                 }
