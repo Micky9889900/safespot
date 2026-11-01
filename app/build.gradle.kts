@@ -39,8 +39,8 @@ android {
         applicationId = "com.safespot.scanner"
         minSdk = 24
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.2.3"
+        versionCode = 10
+        versionName = "1.2.4"
         ndk { abiFilters += ((project.findProperty("abis") as String?) ?: "arm64-v8a,armeabi-v7a,x86_64").split(",") }
         buildConfigField("String", "SERVERS_URL", "\"https://micky9889900.github.io/vpn/servers.json\"")
         buildConfigField("String", "MB_AUTH_KEY", "\"${(project.findProperty("mbAuthKey") ?: "")}\"")
@@ -83,7 +83,7 @@ android {
             buildConfigField("String", "AD_NATIVE_ID", "\"$admobReleaseNative\"")
             buildConfigField("String", "AD_APP_OPEN_ID", "\"$admobReleaseAppOpen\"")
             // R8 code shrinking. Resource shrinking stays OFF: UI art is looked up by name (getIdentifier).
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (keystorePropsFile.exists()) signingConfig = signingConfigs.getByName("release")
