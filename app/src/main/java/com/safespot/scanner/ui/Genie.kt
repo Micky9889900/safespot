@@ -110,6 +110,7 @@ fun GenieOverlay(s: AppState) {
             val (resId, real) = remember(GenieProfile.gender, mood) { GenieProfile.pose(ctx, GenieProfile.gender, mood) }
             Box(contentAlignment = Alignment.Center) {
                 // Fallback expression effects when only the idle art exists.
+                Art("fx_genie_aura", Modifier.size(with(d) { (sizePx * 1.35f).toDp() }), alpha = .8f)
                 if (!real) GenieAura(mood, Modifier.size(with(d) { (sizePx * 1.3f).toDp() }))
                 Image(painterResource(resId), "${GenieProfile.name}, your SafeSpot genie (${mood.name.lowercase()})",
                     Modifier.size(with(d) { sizePx.toDp() }).graphicsLayer {

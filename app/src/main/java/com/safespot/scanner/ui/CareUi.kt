@@ -436,7 +436,10 @@ fun NotifTool(s: AppState) {
 }
 
 
+object BgHint { var result by androidx.compose.runtime.mutableStateOf(false) }
+
 @Composable
-fun ResultArt(name: String) { if (name.isEmpty() || artId(name) == 0) return
+fun ResultArt(name: String) { androidx.compose.runtime.DisposableEffect(Unit) { BgHint.result = true; onDispose { BgHint.result = false } }
+    if (name.isEmpty() || artId(name) == 0) return
     val a by animateFloatAsState(1f, tween(600), label = "ra")
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Art(name, Modifier.size(150.dp).graphicsLayer { scaleX = .8f + .2f * a; scaleY = .8f + .2f * a; alpha = a }) } }

@@ -78,8 +78,12 @@ fun Root(s: AppState) {
         s.tab == "about" -> s.tab = "me"; else -> s.tab = "home" } }
     Box(Modifier.fillMaxSize().animatedBg(phase)) {
     val bgName = when { s.tab == "scan" && s.detail == null && s.tool == null -> "bg_scan"; s.tab == "vpn" -> "bg_vpn_map"
+        com.safespot.scanner.ui.BgHint.result -> "bg_result"; s.tab == "tools" && s.tool == null -> "bg_tools"
         else -> "bg_home_" + when (C.pal.id) { "navy" -> "dark"; else -> C.pal.id } }
     com.safespot.scanner.ui.Art(bgName, Modifier.fillMaxSize(), androidx.compose.ui.layout.ContentScale.Crop, alpha = if (bgName == "bg_vpn_map") .55f else .85f)
+    // Readability scrim: light/frost art is bright, so tint toward the palette background.
+    val lightBg = C.pal.id == "light" || C.pal.id == "frost"
+    Box(Modifier.fillMaxSize().background(C.pal.bottom.copy(alpha = if (lightBg) .55f else .35f)))
     Scaffold(containerColor = Color.Transparent,
         bottomBar = { Column {
             // Banner only on Home and tool lists, never on a tool's result screen (those carry one native ad).

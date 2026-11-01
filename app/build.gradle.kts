@@ -39,8 +39,8 @@ android {
         applicationId = "com.safespot.scanner"
         minSdk = 24
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.2.1"
+        versionCode = 8
+        versionName = "1.2.2"
         ndk { abiFilters += ((project.findProperty("abis") as String?) ?: "arm64-v8a,armeabi-v7a,x86_64").split(",") }
         buildConfigField("String", "SERVERS_URL", "\"https://micky9889900.github.io/vpn/servers.json\"")
         buildConfigField("String", "MB_AUTH_KEY", "\"${(project.findProperty("mbAuthKey") ?: "")}\"")
