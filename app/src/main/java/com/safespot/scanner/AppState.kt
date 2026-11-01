@@ -75,21 +75,41 @@ class AppState(private val ctx: Context) {
         withContext(Dispatchers.Main) { iocVersion = i.version; iocSize = i.byPackage.size + i.byCert.size; mdbVersion = m.version; mdbSize = m.size }
     }
 
+    /** Scan always ends in a result: per-app/per-stage errors are contained, and a watchdog finishes
+     *  with the partial result if we sit at 100 % for more than [WATCHDOG_MS]. */
     fun scan(deep: Boolean, done: () -> Unit = {}) {
         if (scanning) return
         scanning = true; progress = 0f; scanned = 0; tab = "scan"
         scope.launch {
-            val r = withContext(Dispatchers.IO) {
-                Scanner.scan(ctx, deep) { pr -> scope.launch { progress = if (pr.total == 0) 1f else pr.done / pr.total.toFloat(); currentApp = pr.label; scanned = pr.done; etaSec = pr.etaSec } }
-            }
-            result = r; device = r.device; newBadges = store.record(r); historyTick++
-            ctx.getSharedPreferences("safespot", 0).edit().putLong("rtCheck", System.currentTimeMillis()).apply()
-            newAppAlerts = emptyList(); scanning = false
-            log("🛡", "Scan: score ${r.score}, ${r.risky.size} risky of ${r.apps.size} apps")
-            react(if (r.risky.isEmpty()) com.safespot.scanner.ui.Mood.CHEER else com.safespot.scanner.ui.Mood.WORRIED, if (r.risky.isEmpty()) "All clear! Score ${r.score}. Try the Junk Cleaner next." else "I found ${r.risky.size} app(s) to review. Check them first.")
-            done()
+            var partial: ScanResult? = null
+            val job = scope.async(Dispatchers.IO) { runCatching { Scanner.scan(ctx, deep, { partial = it }) { pr -> scope.launch {
+                progress = if (pr.total == 0) 1f else pr.done / pr.total.toFloat(); currentApp = pr.label; scanned = pr.done; etaSec = pr.etaSec } } }
+                .onFailure { if (it !is CancellationException) CrashReporter.nonFatal("Scanner.scan", it) }.getOrNull() }
+            var r: ScanResult? = null
+            try {
+                var fullSince = 0L
+                while (!job.isCompleted) {
+                    delay(100)
+                    if (progress >= 1f) { if (fullSince == 0L) fullSince = System.currentTimeMillis()
+                        else if (System.currentTimeMillis() - fullSince > WATCHDOG_MS) { CrashReporter.nonFatal("scan watchdog", IllegalStateException("stuck at 100%")); break } }
+                }
+                r = if (job.isCompleted) job.await() else { job.cancel(); null }
+            } catch (t: Throwable) { if (t !is CancellationException) CrashReporter.nonFatal("scan wait", t) }
+            val res = r ?: partial ?: ScanResult(System.currentTimeMillis(), deep, emptyList(), DeviceChecks.fallback(), 0, iocVersion, mdbVersion)
+            try {
+                result = res; device = res.device
+                newBadges = runCatching { store.record(res) }.getOrElse { CrashReporter.nonFatal("store.record", it); emptyList() }
+                historyTick++
+                runCatching { ctx.getSharedPreferences("safespot", 0).edit().putLong("rtCheck", System.currentTimeMillis()).apply() }
+                newAppAlerts = emptyList()
+                runCatching { log("🛡", "Scan: score ${res.score}, ${res.risky.size} risky of ${res.apps.size} apps") }
+                react(if (res.risky.isEmpty()) com.safespot.scanner.ui.Mood.CHEER else com.safespot.scanner.ui.Mood.WORRIED, if (res.risky.isEmpty()) "All clear! Score ${res.score}. Try the Junk Cleaner next." else "I found ${res.risky.size} app(s) to review. Check them first.")
+            } finally { scanning = false; progress = 1f }
+            // Interstitial is shown only if already loaded (Ads.interstitial skips otherwise); results are already on screen.
+            runCatching { done() }.onFailure { CrashReporter.nonFatal("scan done()", it) }
         }
     }
+    companion object { const val WATCHDOG_MS = 3000L }
 
     fun refreshDevice() = scope.launch { device = withContext(Dispatchers.IO) { DeviceChecks.run(ctx) } }
 

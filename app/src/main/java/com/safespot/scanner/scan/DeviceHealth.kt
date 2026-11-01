@@ -24,7 +24,12 @@ data class Check(val title: String, val value: String, val level: Level, val adv
 data class DeviceHealth(val checks: List<Check>, val penalty: Int, val patchAgeDays: Long?)
 
 object DeviceChecks {
-    fun run(ctx: Context): DeviceHealth {
+    /** Minimal result used when the checks fail or time out, so a scan always finishes. */
+    fun fallback() = DeviceHealth(listOf(Check("Device checks", "Unavailable right now", Level.INFO)), 0, null)
+    /** Never throws: each failure degrades to [fallback]. */
+    fun run(ctx: Context): DeviceHealth = try { runUnsafe(ctx) } catch (t: Throwable) {
+        runCatching { com.safespot.scanner.CrashReporter.nonFatal("DeviceChecks.run", t) }; fallback() }
+    private fun runUnsafe(ctx: Context): DeviceHealth {
         val c = mutableListOf<Check>()
         var penalty = 0
         // Security patch
@@ -74,7 +79,7 @@ object DeviceChecks {
             val h = b.getIntExtra(BatteryManager.EXTRA_HEALTH, 0)
             val hs = when (h) { BatteryManager.BATTERY_HEALTH_GOOD -> "Good"; BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Overheating"
                 BatteryManager.BATTERY_HEALTH_DEAD -> "Dead"; BatteryManager.BATTERY_HEALTH_COLD -> "Cold"; else -> "Unknown" }
-            c += Check("Battery", "$lvl% · %.1f °C · $hs".format(t), if (t in 0.0..40.0 && h != BatteryManager.BATTERY_HEALTH_OVERHEAT) Level.GOOD else Level.WARN,
+            c += Check("Battery", "%d%% · %.1f °C · %s".format(lvl, t, hs), if (t in 0.0..40.0 && h != BatteryManager.BATTERY_HEALTH_OVERHEAT) Level.GOOD else Level.WARN,
                 "A phone that is always warm while idle can mean something runs in the background.")
         }
         // Network

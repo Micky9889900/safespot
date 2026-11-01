@@ -76,7 +76,12 @@ object Scanner {
      * Deep: all apps, plus APK SHA-256 for user/updated apps, cached by (pkg, versionCode, lastUpdateTime, size).
      * Work runs on Dispatchers.Default in parallel; [progress] is invoked at most every 50 ms.
      */
-    suspend fun scan(ctx: Context, deep: Boolean, progress: (Progress) -> Unit): ScanResult = coroutineScope {
+    /** Test hooks: throw for a package to simulate a broken app entry; replace device checks to simulate a hang. */
+    @Volatile var faultInjector: ((String) -> Unit)? = null
+    @Volatile var deviceChecksOverride: ((Context) -> DeviceHealth)? = null
+    const val DEVICE_TIMEOUT_MS = 3000L
+
+    suspend fun scan(ctx: Context, deep: Boolean, onPartial: (ScanResult) -> Unit = {}, progress: (Progress) -> Unit): ScanResult = coroutineScope {
         val t0 = System.nanoTime()
         val pm = ctx.packageManager
         val ioc = Dbs.ioc(ctx); val mdb = Dbs.mdb(ctx)
@@ -103,18 +108,23 @@ object Scanner {
             val sem = Semaphore(3)
             toHash.map { p -> async(Dispatchers.IO) { sem.withPermit {
                 current.set(p.packageName)
-                sha256File(p.applicationInfo!!.sourceDir) { hashed.addAndGet(it) }?.let { hashes[p.packageName] = it; cache!!.put(p, it) } } } }.awaitAll()
+                runCatching { sha256File(p.applicationInfo!!.sourceDir) { hashed.addAndGet(it) }?.let { hashes[p.packageName] = it; cache!!.put(p, it) } } } } }.awaitAll()
         }
         val tHashEnd = System.nanoTime()
         val chunk = (list.size / (Runtime.getRuntime().availableProcessors() * 2)).coerceAtLeast(8)
         val reports = list.chunked(chunk).map { part -> async(Dispatchers.Default) { part.map { p ->
             val label = runCatching { p.applicationInfo!!.loadLabel(pm).toString() }.getOrDefault(p.packageName)
             current.set(label)
-            analyze(ctx, p, label, ioc, mdb, acc, nl, adm, launchable, hashes[p.packageName]).also { done.incrementAndGet() } } } }.awaitAll().flatten()
+            // One bad package (uninstalled mid-scan, odd signature...) must never abort the scan.
+            try { faultInjector?.invoke(p.packageName); analyze(ctx, p, label, ioc, mdb, acc, nl, adm, launchable, hashes[p.packageName]) }
+            catch (t: Throwable) { if (t is kotlinx.coroutines.CancellationException) throw t; runCatching { com.safespot.scanner.CrashReporter.nonFatal("analyze ${p.packageName}", t) }; null }
+            finally { done.incrementAndGet() } }.filterNotNull() } }.awaitAll().flatten()
         val t2 = System.nanoTime()
-        val dh = DeviceChecks.run(ctx)
-        cache?.save()
         ticker.cancel(); progress(Progress(list.size, list.size, ""))
+        runCatching { onPartial(ScanResult(System.currentTimeMillis(), deep, reports.sortedByDescending { it.score }, DeviceChecks.fallback(), score(reports, DeviceChecks.fallback()), ioc.version, mdb.version)) }
+        // Device checks are bounded: a slow/broken system call degrades to a placeholder instead of blocking results.
+        val dh = withTimeoutOrNull(DEVICE_TIMEOUT_MS) { runInterruptible(Dispatchers.IO) { (deviceChecksOverride ?: DeviceChecks::run)(ctx) } } ?: DeviceChecks.fallback()
+        runCatching { cache?.save() }
         if (BuildConfig.DEBUG) android.util.Log.i("SafeSpotScan", "deep=$deep apps=${list.size} list=${(t1 - t0) / 1000000}ms hash=${(tHashEnd - t1) / 1000000}ms (${toHash.size} new, ${totalBytes / 1048576}MB) analyze=${(t2 - tHashEnd) / 1000000}ms device=${(System.nanoTime() - t2) / 1000000}ms")
         ScanResult(System.currentTimeMillis(), deep, reports.sortedByDescending { it.score }, dh, score(reports, dh), ioc.version, mdb.version)
     }
