@@ -16,11 +16,21 @@ for r in rows[1:]:
     m = re.search(r"(?m)^remote\s+(\S+)\s+(\d+)", cfg)
     if not m: continue
     proto = (re.search(r"(?m)^proto\s+(\S+)", cfg) or [None, "tcp"])[1]
+    # strip comments/blank lines and the long retry options (the app sets fast timeouts itself)
+    cfg = "\n".join(l for l in cfg.replace("\r", "").splitlines() if l.strip() and not l.lstrip().startswith(("#", ";"))
+                    and not re.match(r"(resolv-retry|connect-retry|connect-timeout|server-poll-timeout)\b", l.strip())) + "\n"
     servers.append({"id": f"vg-{r[1]}-{m.group(2)}", "type": "openvpn", "host": r[1], "port": int(m.group(2)), "proto": proto,
                     "country": r[5], "countryCode": r[6], "config": cfg, "provider": "vpngate",
-                    "speedMbps": round(int(r[4] or 0) / 1e6, 1), "pingMs": int(r[3] or 0) if r[3].isdigit() else 0})
-servers.sort(key=lambda s: -s["speedMbps"])
-servers = servers[:150]
+                    "speedMbps": round(int(r[4] or 0) / 1e6, 1), "pingMs": int(r[3] or 0) if r[3].isdigit() else 0,
+                    "score": int(r[2]) if r[2].isdigit() else 0})
+# Keep the top ~40 by VPN Gate score (uptime x throughput), max 6 per country so users still get choice; UDP gets a small bonus.
+servers.sort(key=lambda s: -(s["score"] * (1.15 if s["proto"].startswith("udp") else 1)))
+picked, per = [], {}
+for s_ in servers:
+    if per.get(s_["countryCode"], 0) >= 6: continue
+    per[s_["countryCode"]] = per.get(s_["countryCode"], 0) + 1; picked.append(s_)
+    if len(picked) >= 40: break
+servers = picked
 os.makedirs(os.path.dirname(out), exist_ok=True)
-json.dump({"version": 1, "updated": datetime.datetime.utcnow().isoformat() + "Z", "source": "VPN Gate Academic Experiment (vpngate.net)", "servers": servers}, open(out, "w"))
+json.dump({"version": 1, "updated": datetime.datetime.utcnow().isoformat() + "Z", "source": "VPN Gate Academic Experiment (vpngate.net)", "servers": servers}, open(out, "w"), separators=(",", ":"))
 print(f"{len(servers)} servers -> {out}")

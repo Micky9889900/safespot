@@ -125,12 +125,13 @@ fun VpnScreen(s: AppState) {
     var safeDns by remember { mutableStateOf(s.store.safeDns) }
     var err by remember { mutableStateOf<String?>(null) }
     val prep = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        if (r.resultCode == Activity.RESULT_OK) s.selected?.let { err = Vpn.connect(ctx, it, safeDns); s.store.unlockVpn() } else err = "VPN permission was not granted." }
+        if (r.resultCode == Activity.RESULT_OK) startVpn(s, ctx, safeDns) else err = "VPN permission was not granted." }
     fun toggle() {
         if (Vpn.state == Vpn.State.CONNECTED || Vpn.state == Vpn.State.CONNECTING) { Vpn.disconnect(ctx); return }
-        val sv = s.selected ?: return
+        if (s.servers.isEmpty()) { err = "No servers yet. Check your internet."; s.loadServers(true); return }
+        err = null
         val i = VpnService.prepare(ctx)
-        if (i != null) prep.launch(i) else { err = Vpn.connect(ctx, sv, safeDns); s.store.unlockVpn() }
+        if (i != null) prep.launch(i) else startVpn(s, ctx, safeDns)
     }
     if (picking) { ServerPicker(s) { picking = false }; return }
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -151,9 +152,9 @@ fun VpnScreen(s: AppState) {
             Glass(Modifier.fillMaxWidth(), onClick = { if (Vpn.state == Vpn.State.OFF || Vpn.state == Vpn.State.ERROR) picking = true }) {
                 val sv = s.selected
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(sv?.flag ?: "🌐", fontSize = 30.sp)
+                    Text(if (s.autoServer && Vpn.state == Vpn.State.OFF) "⚡" else sv?.flag ?: "🌐", fontSize = 30.sp)
                     Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                        Text(sv?.country ?: if (s.loadingServers) "Loading servers…" else "No servers available", color = C.Ink, fontWeight = FontWeight.Bold)
+                        Text(if (s.autoServer && Vpn.state == Vpn.State.OFF && s.servers.isNotEmpty()) "Fastest server (auto)" else sv?.country ?: if (s.loadingServers) "Loading servers…" else "No servers available", color = C.Ink, fontWeight = FontWeight.Bold)
                         Body(sv?.let { "${it.host} · ${it.proto.uppercase()} ${it.port} · ${it.provider}" } ?: s.serverSource, C.SilverDim, 12)
                     }
                     sv?.let { PingText(it.pingMs) }; Text("  ›", color = C.Silver, fontSize = 20.sp)
@@ -188,7 +189,14 @@ fun VpnScreen(s: AppState) {
     }
 }
 
-@Composable fun PingText(ms: Int) = Text(if (ms < 0) "—" else "$ms ms", color = when { ms < 0 -> C.SilverDim; ms < 150 -> C.Green; ms < 350 -> C.Amber; else -> C.Red }, fontSize = 12.sp)
+fun startVpn(s: AppState, ctx: android.content.Context, safeDns: Boolean) {
+    val ranked = s.rankedServers
+    val manual = s.selected?.takeIf { !s.autoServer }
+    Vpn.connectSmart(ctx, if (manual != null) listOf(manual) + ranked.filter { it.id != manual.id } else ranked, safeDns, probe = manual == null) { s.selected = it }
+    s.store.unlockVpn()
+}
+
+@Composable fun PingText(ms: Int) = Text(if (ms == -2) "no reply" else if (ms < 0) "—" else "$ms ms", color = when { ms < 0 -> C.SilverDim; ms < 150 -> C.Green; ms < 350 -> C.Amber; else -> C.Red }, fontSize = 12.sp)
 
 @Composable
 fun ConnectButton(state: Vpn.State, onClick: () -> Unit) {
@@ -210,11 +218,16 @@ fun ServerPicker(s: AppState, close: () -> Unit) {
     val byCountry = s.servers.groupBy { it.country }.toList().sortedBy { it.first }
     LazyColumn(contentPadding = PaddingValues(16.dp)) {
         item { Row(verticalAlignment = Alignment.CenterVertically) { GhostButton("← Back") { close() }; Spacer(Modifier.weight(1f)); GhostButton(if (s.loadingServers) "…" else "Refresh") { s.loadServers(true) } }
-            Spacer(Modifier.height(8.dp)); Title("Choose a location"); Body("${s.servers.size} servers · ${s.serverSource}", C.SilverDim, 12); Spacer(Modifier.height(8.dp)) }
+            Spacer(Modifier.height(8.dp)); Title("Choose a location"); Body("${s.servers.size} servers · ${s.serverSource}", C.SilverDim, 12); Spacer(Modifier.height(8.dp))
+            Glass(pad = 12.dp, onClick = { s.setAuto(true); close() }) { Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("⚡", fontSize = 22.sp); Column(Modifier.weight(1f).padding(start = 10.dp)) { Text("Fastest server (auto)", color = C.Ink, fontWeight = FontWeight.Bold)
+                    Body("Tests the best 8 servers at once and connects to the first that answers. Switches automatically if one stalls.", C.SilverDim, 11) }
+                if (s.autoServer) Text("✓", color = C.Green, fontSize = 18.sp) } }
+            Spacer(Modifier.height(6.dp)) }
         byCountry.forEach { (country, list) ->
             item { Section("${list.first().flag}  $country (${list.size})") }
             items(list.sortedWith(compareBy<VpnServer> { if (it.pingMs < 0) Int.MAX_VALUE else it.pingMs }.thenByDescending { it.speedMbps }).take(6), key = { it.id }) { sv ->
-                Glass(pad = 12.dp, onClick = { s.selected = sv; close() }) { Row(verticalAlignment = Alignment.CenterVertically) {
+                Glass(pad = 12.dp, onClick = { s.selected = sv; s.setAuto(false); close() }) { Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) { Text(sv.host, color = C.Ink, fontSize = 13.sp); Body("${sv.proto.uppercase()} ${sv.port}" + if (sv.speedMbps > 0) " · %.0f Mbps listed".format(sv.speedMbps) else "", C.SilverDim, 11) }
                     PingText(sv.pingMs) } }
                 Spacer(Modifier.height(6.dp))

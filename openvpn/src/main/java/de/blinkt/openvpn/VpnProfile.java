@@ -470,7 +470,7 @@ public class VpnProfile implements Serializable, Cloneable {
 
 
         cfg.append("connect-retry ").append(mConnectRetry).append(" ").append(mConnectRetryMaxTime).append("\n");
-        cfg.append("resolv-retry 60\n");
+        cfg.append("resolv-retry 5\n");
 
 
         // We cannot use anything else than tun

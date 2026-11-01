@@ -101,6 +101,7 @@ fun ScanScreen(s: AppState) {
             Spacer(Modifier.height(24.dp))
             Text("${(s.progress * 100).toInt()}%", color = C.Ink, fontSize = 34.sp, fontWeight = FontWeight.Black)
             Body("Checking app ${s.scanned}: ${s.currentApp}", C.Silver, 13)
+            if (s.etaSec > 0) Body("About ${if (s.etaSec >= 60) "${s.etaSec / 60} min ${s.etaSec % 60} s" else "${s.etaSec} s"} left (hashing new or updated apps)", C.SilverDim, 12)
             Body("Signatures · permissions · accessibility · admins · install source", C.SilverDim, 12)
         }
         return

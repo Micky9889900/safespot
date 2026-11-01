@@ -11,6 +11,14 @@ import android.os.Build
 import android.provider.Settings
 import java.io.File
 import java.security.MessageDigest
+import com.safespot.scanner.BuildConfig
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import org.json.JSONObject
 
 object Scanner {
     private val PLAY = setOf("com.android.vending", "com.google.android.feedback")
@@ -21,12 +29,14 @@ object Scanner {
     private val SYSTEM_NAMES = setOf("system service", "system services", "android system", "system update", "update service", "google services",
         "google play services", "wifi service", "wi-fi service", "settings", "sync service", "device health", "system", "android services", "security service")
 
-    private fun hex(b: ByteArray) = b.joinToString("") { "%02X".format(it) }
+    private val HEXC = "0123456789ABCDEF".toCharArray()
+    fun hex(b: ByteArray): String { val o = CharArray(b.size * 2); for (i in b.indices) { val v = b[i].toInt() and 0xFF; o[2 * i] = HEXC[v ushr 4]; o[2 * i + 1] = HEXC[v and 15] }; return String(o) }
     private fun digest(alg: String, b: ByteArray) = hex(MessageDigest.getInstance(alg).digest(b))
 
-    fun sha256File(path: String): String? = runCatching {
+    /** Streams the file with a 1 MB buffer; [onBytes] reports progress for the ETA. */
+    fun sha256File(path: String, onBytes: (Long) -> Unit = {}): String? = runCatching {
         val md = MessageDigest.getInstance("SHA-256")
-        File(path).inputStream().use { s -> val buf = ByteArray(1 shl 16); while (true) { val n = s.read(buf); if (n < 0) break; md.update(buf, 0, n) } }
+        File(path).inputStream().use { s -> val buf = ByteArray(1 shl 20); while (true) { val n = s.read(buf); if (n < 0) break; md.update(buf, 0, n); onBytes(n.toLong()) } }
         hex(md.digest())
     }.getOrNull()
 
@@ -57,28 +67,60 @@ object Scanner {
         if (Build.VERSION.SDK_INT >= 30) pm.getInstallSourceInfo(pkg).installingPackageName else pm.getInstallerPackageName(pkg)
     }.getOrNull()
 
+    /** Progress snapshot (throttled to ~20/s by the caller side). */
+    data class Progress(val done: Int, val total: Int, val label: String, val etaSec: Int = -1)
+
     /**
-     * Full on-device scan. [deep] = include pre-installed system apps and hash every APK.
-     * [progress] is called with (done, total, currentLabel).
+     * On-device scan.
+     * Quick: user + updated-system apps, NO APK hashing (package name, signing cert, permissions, flags only).
+     * Deep: all apps, plus APK SHA-256 for user/updated apps, cached by (pkg, versionCode, lastUpdateTime, size).
+     * Work runs on Dispatchers.Default in parallel; [progress] is invoked at most every 50 ms.
      */
-    fun scan(ctx: Context, deep: Boolean, progress: (Int, Int, String) -> Unit): ScanResult {
+    suspend fun scan(ctx: Context, deep: Boolean, progress: (Progress) -> Unit): ScanResult = coroutineScope {
+        val t0 = System.nanoTime()
         val pm = ctx.packageManager
-        val ioc = IocDb.load(ctx); val mdb = MalwareDb.load(ctx)
+        val ioc = Dbs.ioc(ctx); val mdb = Dbs.mdb(ctx)
         val acc = enabledAccessibility(ctx); val nl = notificationListeners(ctx); val adm = deviceAdmins(ctx)
-        val launchable = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0).map { it.activityInfo.packageName }.toSet()
+        val launchable = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0).mapTo(HashSet()) { it.activityInfo.packageName }
         val own = ctx.packageName
         val all = packages(pm).filter { it.packageName != own && it.applicationInfo != null }
-        val list = all.filter { deep || (it.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || (it.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0 }
-        val reports = ArrayList<AppReport>(list.size)
-        list.forEachIndexed { i, p -> 
-            val label = runCatching { p.applicationInfo!!.loadLabel(pm).toString() }.getOrDefault(p.packageName)
-            progress(i, list.size, label)
-            reports += analyze(ctx, p, label, ioc, mdb, acc, nl, adm, launchable, deep)
+        val list = all.filter { deep || !isPristineSystem(it.applicationInfo!!) }
+        val t1 = System.nanoTime()
+        val done = AtomicInteger(0); val current = AtomicReference("")
+        val cache = if (deep) HashCache(ctx) else null
+        val toHash = if (deep) list.filter { !isPristineSystem(it.applicationInfo!!) && cache!!.get(it) == null } else emptyList()
+        val totalBytes = toHash.sumOf { runCatching { File(it.applicationInfo!!.sourceDir).length() }.getOrDefault(0L) }
+        val hashed = AtomicLong(0); val tHash = System.nanoTime()
+        val ticker = launch { while (isActive) {
+            val d = done.get()
+            val eta = if (deep && totalBytes > 0) { val h = hashed.get(); val el = (System.nanoTime() - tHash) / 1e9
+                if (h > 0 && el > 0.5) ((totalBytes - h) / (h / el)).toInt() else -1 } else -1
+            progress(Progress(d, list.size, current.get(), eta)); delay(50) } }
+        // Hash (deep only) with a bounded pool: I/O-bound, 3 parallel streams is the sweet spot on flash.
+        val hashes = java.util.concurrent.ConcurrentHashMap<String, String>()
+        if (deep) {
+            list.forEach { p -> cache!!.get(p)?.let { hashes[p.packageName] = it } }
+            val sem = Semaphore(3)
+            toHash.map { p -> async(Dispatchers.IO) { sem.withPermit {
+                current.set(p.packageName)
+                sha256File(p.applicationInfo!!.sourceDir) { hashed.addAndGet(it) }?.let { hashes[p.packageName] = it; cache!!.put(p, it) } } } }.awaitAll()
         }
-        progress(list.size, list.size, "")
+        val tHashEnd = System.nanoTime()
+        val chunk = (list.size / (Runtime.getRuntime().availableProcessors() * 2)).coerceAtLeast(8)
+        val reports = list.chunked(chunk).map { part -> async(Dispatchers.Default) { part.map { p ->
+            val label = runCatching { p.applicationInfo!!.loadLabel(pm).toString() }.getOrDefault(p.packageName)
+            current.set(label)
+            analyze(ctx, p, label, ioc, mdb, acc, nl, adm, launchable, hashes[p.packageName]).also { done.incrementAndGet() } } } }.awaitAll().flatten()
+        val t2 = System.nanoTime()
         val dh = DeviceChecks.run(ctx)
-        return ScanResult(System.currentTimeMillis(), deep, reports.sortedByDescending { it.score }, dh, score(reports, dh), ioc.version, mdb.version)
+        cache?.save()
+        ticker.cancel(); progress(Progress(list.size, list.size, ""))
+        if (BuildConfig.DEBUG) android.util.Log.i("SafeSpotScan", "deep=$deep apps=${list.size} list=${(t1 - t0) / 1000000}ms hash=${(tHashEnd - t1) / 1000000}ms (${toHash.size} new, ${totalBytes / 1048576}MB) analyze=${(t2 - tHashEnd) / 1000000}ms device=${(System.nanoTime() - t2) / 1000000}ms")
+        ScanResult(System.currentTimeMillis(), deep, reports.sortedByDescending { it.score }, dh, score(reports, dh), ioc.version, mdb.version)
     }
+
+    /** Preinstalled and never updated: lives on the verified read-only system image. */
+    fun isPristineSystem(ai: ApplicationInfo) = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0 && (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
 
     fun score(apps: List<AppReport>, dh: DeviceHealth): Int {
         var s = 100
@@ -90,7 +132,7 @@ object Scanner {
     }
 
     fun analyze(ctx: Context, p: PackageInfo, label: String, ioc: IocDb, mdb: MalwareDb, acc: Set<String>, nl: Set<String>, adm: Set<String>,
-                launchable: Set<String>, deep: Boolean): AppReport {
+                launchable: Set<String>, apkHash: String?): AppReport {
         val pm = ctx.packageManager
         val ai = p.applicationInfo!!
         val system = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -112,12 +154,10 @@ object Scanner {
         if (isAdm) cats += PermCategory.ADMIN
         val hasLauncher = p.packageName in launchable
         val sideloaded = source == Source.SIDELOAD || source == Source.UNKNOWN
-        val apkHash = if (deep || sideloaded) ai.sourceDir?.let { sha256File(it) } else null
 
         val f = mutableListOf<Finding>()
-        val iocName = ioc.byPackage[p.packageName] ?: s1.firstNotNullOfOrNull { ioc.byCert[it] } ?: s256.firstNotNullOfOrNull { ioc.byCert[it] }
+        val (iocName, mal) = Matcher.match(p.packageName, s256, s1, apkHash, ioc, mdb)
         if (iocName != null) f += Finding("Known stalkerware: $iocName", "This app matches the public stalkerware-indicators list (package name or signing certificate).", 100)
-        val mal = apkHash?.let { mdb.sha256[it] } ?: s256.firstNotNullOfOrNull { mdb.certs[it] } ?: mdb.packages[p.packageName]
         if (mal != null) f += Finding("Known malware: $mal", "The APK file or its signing certificate matches the malware database.", 100)
         if (isAcc) f += Finding("Accessibility service ON", "Can read everything on screen and tap for you. Spyware's favourite permission.", 35)
         if (isAdm) f += Finding("Device administrator", "Can lock or wipe the phone and is harder to uninstall.", 25)
@@ -150,10 +190,49 @@ object Scanner {
     /** Quick check of apps installed/updated since [since] (used by the daily real-time check). */
     fun scanSince(ctx: Context, since: Long): List<AppReport> {
         val pm = ctx.packageManager
-        val ioc = IocDb.load(ctx); val mdb = MalwareDb.load(ctx)
+        val ioc = Dbs.ioc(ctx); val mdb = Dbs.mdb(ctx)
         val acc = enabledAccessibility(ctx); val nl = notificationListeners(ctx); val adm = deviceAdmins(ctx)
         val launchable = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0).map { it.activityInfo.packageName }.toSet()
         return packages(pm).filter { it.lastUpdateTime > since && it.packageName != ctx.packageName && it.applicationInfo != null }
-            .map { analyze(ctx, it, runCatching { it.applicationInfo!!.loadLabel(pm).toString() }.getOrDefault(it.packageName), ioc, mdb, acc, nl, adm, launchable, false) }
+            .map { analyze(ctx, it, runCatching { it.applicationInfo!!.loadLabel(pm).toString() }.getOrDefault(it.packageName), ioc, mdb, acc, nl, adm, launchable, null) }
     }
+}
+
+/** Pure lookup against prebuilt HashMaps: O(1) per key, no list scans or regex. */
+object Matcher {
+    fun match(pkg: String, s256: List<String>, s1: List<String>, apkHash: String?, ioc: IocDb, mdb: MalwareDb): Pair<String?, String?> {
+        var iocName = ioc.byPackage[pkg]
+        if (iocName == null) for (c in s1) { iocName = ioc.byCert[c]; if (iocName != null) break }
+        if (iocName == null) for (c in s256) { iocName = ioc.byCert[c]; if (iocName != null) break }
+        var mal = apkHash?.let { mdb.sha256[it] }
+        if (mal == null) for (c in s256) { mal = mdb.certs[c]; if (mal != null) break }
+        if (mal == null) mal = mdb.packages[pkg]
+        return iocName to mal
+    }
+}
+
+/** Databases parsed once and kept in memory until their file changes. */
+object Dbs {
+    @Volatile private var i: Pair<Long, IocDb>? = null
+    @Volatile private var m: Pair<Long, MalwareDb>? = null
+    private fun stamp(ctx: Context, n: String) = File(ctx.filesDir, n).let { if (it.exists()) it.lastModified() else 0L }
+    fun ioc(ctx: Context): IocDb { val st = stamp(ctx, "ioc.json"); i?.let { if (it.first == st) return it.second }; return IocDb.load(ctx).also { i = st to it } }
+    fun mdb(ctx: Context): MalwareDb { val st = stamp(ctx, "malware_db.json"); m?.let { if (it.first == st) return it.second }; return MalwareDb.load(ctx).also { m = st to it } }
+}
+
+/** APK SHA-256 cache keyed by package + versionCode + lastUpdateTime + size; written once at the end of a scan. */
+class HashCache(ctx: Context) {
+    private val f = File(ctx.filesDir, "apk_hash_cache.json")
+    private val map = java.util.concurrent.ConcurrentHashMap<String, String>().apply {
+        runCatching { val o = JSONObject(f.readText()); o.keys().forEach { put(it, o.getString(it)) } } }
+    @Volatile private var dirty = false
+    @Suppress("DEPRECATION")
+    private fun key(p: PackageInfo): String {
+        val vc = if (Build.VERSION.SDK_INT >= 28) p.longVersionCode else p.versionCode.toLong()
+        val size = runCatching { File(p.applicationInfo!!.sourceDir).length() }.getOrDefault(0L)
+        return "${p.packageName}|$vc|${p.lastUpdateTime}|$size"
+    }
+    fun get(p: PackageInfo): String? = map[key(p)]
+    fun put(p: PackageInfo, h: String) { map[key(p)] = h; dirty = true }
+    fun save() { if (dirty) runCatching { f.writeText(JSONObject(map as Map<*, *>).toString()) } }
 }

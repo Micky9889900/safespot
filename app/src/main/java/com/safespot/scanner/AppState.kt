@@ -44,6 +44,7 @@ class AppState(private val ctx: Context) {
     var progress by mutableFloatStateOf(0f); private set
     var currentApp by mutableStateOf(""); private set
     var scanned by mutableIntStateOf(0); private set
+    var etaSec by mutableIntStateOf(-1); private set
     var newBadges by mutableStateOf<List<Badge>>(emptyList())
     var newAppAlerts by mutableStateOf<List<AppReport>>(emptyList())
     var device by mutableStateOf<DeviceHealth?>(null); private set
@@ -79,7 +80,7 @@ class AppState(private val ctx: Context) {
         scanning = true; progress = 0f; scanned = 0; tab = "scan"
         scope.launch {
             val r = withContext(Dispatchers.IO) {
-                Scanner.scan(ctx, deep) { i, n, name -> scope.launch { progress = i / n.toFloat(); currentApp = name; scanned = i } }
+                Scanner.scan(ctx, deep) { pr -> scope.launch { progress = if (pr.total == 0) 1f else pr.done / pr.total.toFloat(); currentApp = pr.label; scanned = pr.done; etaSec = pr.etaSec } }
             }
             result = r; device = r.device; newBadges = store.record(r); historyTick++
             ctx.getSharedPreferences("safespot", 0).edit().putLong("rtCheck", System.currentTimeMillis()).apply()
@@ -95,18 +96,24 @@ class AppState(private val ctx: Context) {
     fun updateDb() { if (dbBusy) return; dbBusy = true
         scope.launch { dbMsg = withContext(Dispatchers.IO) { MalwareDb.update(ctx) }; dbBusy = false; refreshDbInfo() } }
 
+    /** true = "Fastest server" auto mode (default). */
+    var autoServer by mutableStateOf(ctx.getSharedPreferences("vpn", 0).getBoolean("auto", true))
+    fun setAuto(v: Boolean) { autoServer = v; ctx.getSharedPreferences("vpn", 0).edit().putBoolean("auto", v).apply() }
+    val rankedServers get() = Servers.rank(servers)
+
+    /** Cached list shows instantly; network refresh + parallel 1.5 s probes happen in the background. */
     fun loadServers(force: Boolean = false) {
         if (loadingServers || (servers.isNotEmpty() && !force)) return
         loadingServers = true
         scope.launch {
-            val l = withContext(Dispatchers.IO) { Servers.load(ctx) }
-            servers = l.servers; serverSource = l.source; loadingServers = false
-            // real TCP ping of the 25 fastest-listed servers
-            val pinged = withContext(Dispatchers.IO) {
-                l.servers.sortedByDescending { it.speedMbps }.take(25).map { s -> async { s.copy(pingMs = Servers.ping(s)) } }.awaitAll() }
+            if (servers.isEmpty()) withContext(Dispatchers.IO) { Servers.loadCached(ctx) }?.let { servers = it.servers; serverSource = it.source }
+            val remote = withContext(Dispatchers.IO) { Servers.loadRemote(ctx) }
+            if (remote != null) { servers = remote.servers; serverSource = remote.source } else if (servers.isEmpty()) serverSource = "Offline: no server list"
+            loadingServers = false
+            val pinged = withContext(Dispatchers.IO) { Servers.rank(servers).take(25).map { sv -> async { sv.copy(pingMs = Servers.ping(sv)) } }.awaitAll() }
             val map = pinged.associateBy { it.id }
-            servers = l.servers.map { map[it.id] ?: it }
-            if (selected == null) selected = servers.filter { it.pingMs > 0 }.minByOrNull { it.pingMs } ?: servers.firstOrNull()
+            servers = servers.map { map[it.id] ?: it }
+            if (selected == null) selected = Servers.rank(servers).firstOrNull()
         }
     }
 

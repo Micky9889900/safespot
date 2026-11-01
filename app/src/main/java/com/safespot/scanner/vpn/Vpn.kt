@@ -20,6 +20,8 @@ import de.blinkt.openvpn.core.ProfileManager
 import de.blinkt.openvpn.core.VPNLaunchHelper
 import de.blinkt.openvpn.core.VpnStatus
 import java.io.StringReader
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 
 /** Thin wrapper around ics-openvpn (GPL-2) exposing Compose state for the UI. */
 object Vpn : VpnStatus.StateListener, VpnStatus.ByteCountListener {
@@ -49,7 +51,10 @@ object Vpn : VpnStatus.StateListener, VpnStatus.ByteCountListener {
 
     /** VPN Gate relays are mostly old SoftEther servers: allow their CBC cipher and legacy certs. */
     fun patchConfig(cfg: String, safeDns: Boolean): String {
-        val sb = StringBuilder(cfg.replace("\r", ""))
+        // Drop the long/infinite retry settings shipped in VPN Gate configs; we fail over ourselves.
+        val drop = Regex("^(resolv-retry|connect-retry|connect-retry-max|connect-timeout|server-poll-timeout|ping-restart|hand-window)\\b.*")
+        val sb = StringBuilder(cfg.replace("\r", "").lines().filterNot { drop.matches(it.trim()) }.joinToString("\n"))
+        sb.append("\nconnect-timeout 6\nserver-poll-timeout 6\nhand-window 10\n")
         if (!cfg.contains("data-ciphers")) sb.append("\ndata-ciphers AES-256-GCM:AES-128-GCM:AES-128-CBC\ndata-ciphers-fallback AES-128-CBC\n")
         return sb.toString()
     }
@@ -60,6 +65,8 @@ object Vpn : VpnStatus.StateListener, VpnStatus.ByteCountListener {
         val vp = cp.convertProfile()
         vp.mName = "SafeSpot · ${s.country}"
         vp.mTlSCertProfile = "legacy"
+        vp.mConnectRetry = "1"; vp.mConnectRetryMax = "1"; vp.mConnectRetryMaxTime = "2"
+        vp.mConnections?.forEach { it.mConnectTimeout = 6 }
         if (safeDns) { vp.mOverrideDNS = true; vp.mDNS1 = "9.9.9.9"; vp.mDNS2 = "149.112.112.112" }
         ProfileManager.setTemporaryProfile(ctx, vp)
         server = s; state = State.CONNECTING; detail = "Starting…"
@@ -68,7 +75,45 @@ object Vpn : VpnStatus.StateListener, VpnStatus.ByteCountListener {
         null
     } catch (e: Exception) { state = State.ERROR; detail = e.message ?: "Bad config"; detail }
 
+    // ---- Smart connect: probe, pick first responsive, auto-failover ----
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+    private var job: kotlinx.coroutines.Job? = null
+    @Volatile private var failingOver = false
+    var attempt by mutableIntStateOf(0); private set
+    const val ATTEMPT_TIMEOUT_MS = 12_000L
+
+    /**
+     * [cands] ranked servers. If [probe], the top 8 are TCP-probed in parallel (1.5 s) and the first to answer is used;
+     * otherwise cands[0] is tried first. Each attempt gets ~12 s; then the next responsive server is tried (max 4).
+     */
+    fun connectSmart(ctx: Context, cands: List<VpnServer>, safeDns: Boolean, probe: Boolean, onPicked: (VpnServer) -> Unit = {}) {
+        job?.cancel(); if (cands.isEmpty()) { state = State.ERROR; detail = "No servers available"; return }
+        state = State.CONNECTING; detail = if (probe) "Finding the fastest server…" else "Starting…"; attempt = 0
+        job = scope.launch {
+            // Manual pick connects at once; failover candidates are probed in parallel meanwhile.
+            val probedD = async { Servers.fastest(if (probe) cands else cands.drop(1), 8) }
+            val queue = ArrayList<VpnServer>()
+            if (probe) { queue += probedD.await(); if (queue.isEmpty()) queue += cands.take(3) } else queue += cands[0]
+            var i = 0
+            while (i < queue.size && i < 4) { val sv = queue[i]
+                attempt = i + 1
+                if (i > 0) { failingOver = true; runCatching { service?.stopVPN(false) }; kotlinx.coroutines.delay(400); failingOver = false; detail = "Trying faster server… (${sv.country})" }
+                onPicked(sv)
+                connect(ctx, sv, safeDns)?.let { return@launch }
+                if (i > 0) detail = "Trying faster server… (${sv.country})"
+                val ok = kotlinx.coroutines.withTimeoutOrNull(ATTEMPT_TIMEOUT_MS) { while (state != State.CONNECTED) { if (state == State.ERROR && !failingOver) break; kotlinx.coroutines.delay(150) }; state == State.CONNECTED }
+                failingOver = false
+                if (ok == true) return@launch
+                if (state == State.OFF) return@launch // user cancelled
+                i++
+                if (i == 1 && !probe) { queue += probedD.await().filter { p -> queue.none { it.id == p.id } }; if (queue.size == 1) queue += cands.drop(1).take(2) }
+            }
+            runCatching { service?.stopVPN(false) }; state = State.ERROR; detail = "No server answered. Try again or pick another country."
+        }
+    }
+
     fun disconnect(ctx: Context) {
+        job?.cancel(); failingOver = false
         ProfileManager.setConnectedVpnProfileDisconnected(ctx)
         runCatching { service?.stopVPN(false) }
         state = State.OFF; detail = "Disconnected"; connectedAt = 0
@@ -79,8 +124,8 @@ object Vpn : VpnStatus.StateListener, VpnStatus.ByteCountListener {
     private fun onState(st: String?, log: String?, level: ConnectionStatus?) {
         val newState = when (level) {
             ConnectionStatus.LEVEL_CONNECTED -> State.CONNECTED
-            ConnectionStatus.LEVEL_NOTCONNECTED -> if (state == State.CONNECTING && st == "NOPROCESS") State.CONNECTING else State.OFF
-            ConnectionStatus.LEVEL_AUTH_FAILED -> State.ERROR
+            ConnectionStatus.LEVEL_NOTCONNECTED -> if (state == State.CONNECTING && (st == "NOPROCESS" || failingOver || job?.isActive == true)) State.CONNECTING else State.OFF
+            ConnectionStatus.LEVEL_AUTH_FAILED -> if (job?.isActive == true) State.CONNECTING else State.ERROR
             ConnectionStatus.LEVEL_START, ConnectionStatus.LEVEL_CONNECTING_SERVER_REPLIED, ConnectionStatus.LEVEL_CONNECTING_NO_SERVER_REPLY_YET,
             ConnectionStatus.LEVEL_WAITING_FOR_USER_INPUT -> State.CONNECTING
             else -> state
@@ -88,7 +133,7 @@ object Vpn : VpnStatus.StateListener, VpnStatus.ByteCountListener {
         if (newState == State.CONNECTED && state != State.CONNECTED) { connectedAt = SystemClock.elapsedRealtime(); sessions++ }
         if (newState != State.CONNECTED) connectedAt = 0
         state = newState
-        detail = listOfNotNull(st, log?.takeIf { it.isNotBlank() }).joinToString(": ")
+        if (!failingOver) detail = listOfNotNull(st, log?.takeIf { it.isNotBlank() }).joinToString(": ")
     }
 
     override fun setConnectedVPN(uuid: String?) {}
