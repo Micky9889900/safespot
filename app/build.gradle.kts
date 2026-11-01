@@ -6,8 +6,8 @@ plugins {
 }
 
 // ============================================================================
-//  ADMOB IDS: THE ONLY PLACE TO EDIT. Currently Google's TEST IDs for BOTH builds.
-//  Replace the RELEASE values with SafeSpot's real AdMob IDs before publishing.
+//  ADMOB IDS: THE ONLY PLACE TO EDIT. Debug = Google TEST IDs; release = real SafeSpot IDs.
+//  Release values are SafeSpot's real AdMob IDs (set in 1.2.6).
 // ============================================================================
 val admobTestAppId = "ca-app-pub-3940256099942544~3347511713"
 val admobTestBanner = "ca-app-pub-3940256099942544/9214589741"
@@ -16,12 +16,12 @@ val admobTestRewarded = "ca-app-pub-3940256099942544/5224354917"
 val admobTestNative = "ca-app-pub-3940256099942544/2247696110"
 val admobTestAppOpen = "ca-app-pub-3940256099942544/9257395921"
 
-val admobReleaseAppId = admobTestAppId          // TODO real
-val admobReleaseBanner = admobTestBanner        // TODO real
-val admobReleaseInterstitial = admobTestInterstitial // TODO real
-val admobReleaseRewarded = admobTestRewarded    // TODO real
-val admobReleaseNative = admobTestNative        // TODO real
-val admobReleaseAppOpen = admobTestAppOpen      // TODO real
+val admobReleaseAppId = "ca-app-pub-4164264064124693~7258414508"
+val admobReleaseBanner = "ca-app-pub-4164264064124693/5559366205"
+val admobReleaseInterstitial = "ca-app-pub-4164264064124693/6599938959"
+val admobReleaseRewarded = "ca-app-pub-4164264064124693/5367794512"
+val admobReleaseNative = "ca-app-pub-4164264064124693/1814516136"
+val admobReleaseAppOpen = "ca-app-pub-4164264064124693/1957986365"
 // ============================================================================
 
 val keystorePropsFile = rootProject.file("keystore/keystore.properties")
@@ -39,8 +39,8 @@ android {
         applicationId = "com.safespot.scanner"
         minSdk = 24
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.2.5"
+        versionCode = 12
+        versionName = "1.2.6"
         ndk { abiFilters += ((project.findProperty("abis") as String?) ?: "arm64-v8a,armeabi-v7a,x86_64").split(",") }
         buildConfigField("String", "SERVERS_URL", "\"https://micky9889900.github.io/vpn/servers.json\"")
         buildConfigField("String", "MB_AUTH_KEY", "\"${(project.findProperty("mbAuthKey") ?: "")}\"")
