@@ -1,6 +1,6 @@
 from PIL import Image, ImageChops, ImageDraw
 import os
-src = Image.open("assets-src/icon-hamza.jpg").convert("RGB")
+src = Image.open("assets-src/icon-v2.jpg").convert("RGB")
 # trim white border
 bg = Image.new("RGB", src.size, (255,255,255))
 diff = ImageChops.difference(src, bg).convert("L").point(lambda v: 255 if v > 40 else 0)

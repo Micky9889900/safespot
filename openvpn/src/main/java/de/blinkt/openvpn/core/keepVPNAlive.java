@@ -103,8 +103,14 @@ public class keepVPNAlive extends JobService implements VpnStatus.StateListener 
         JobScheduler jobScheduler = null;
         jobScheduler = getJobScheduler(c);
 
-        jobScheduler.schedule(jib.build());
-        VpnStatus.logDebug("Scheduling VPN keep alive for VPN " + vp.mName);
+        try {
+            jobScheduler.schedule(jib.build());
+            VpnStatus.logDebug("Scheduling VPN keep alive for VPN " + vp.mName);
+        } catch (RuntimeException e) {
+            // SafeSpot: never let keep-alive scheduling kill the VPN service (e.g. missing RECEIVE_BOOT_COMPLETED)
+            try { jib.setPersisted(false); jobScheduler.schedule(jib.build()); }
+            catch (RuntimeException e2) { VpnStatus.logException("Could not schedule keep-alive job", e2); }
+        }
     }
 
     private static JobScheduler getJobScheduler(Context c) {

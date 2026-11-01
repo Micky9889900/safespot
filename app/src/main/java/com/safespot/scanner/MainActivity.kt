@@ -27,6 +27,9 @@ import com.safespot.scanner.data.Reminder
 import com.safespot.scanner.ui.*
 import com.safespot.scanner.vpn.Vpn
 
+/** Where crash reports are emailed (placeholder until the final address is confirmed). */
+const val CRASH_EMAIL = "safespot.crashreports@gmail.com"
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,13 +51,21 @@ fun CrashScreen(report: String, onContinue: () -> Unit) {
     Column(Modifier.fillMaxSize().background(C.bgBrush).systemBarsPadding().padding(16.dp)) {
         com.safespot.scanner.ui.Art("ill_crash", Modifier.size(140.dp).align(androidx.compose.ui.Alignment.CenterHorizontally))
         Text("Crash report", color = Color.White, style = MaterialTheme.typography.headlineSmall)
-        Text("SafeSpot closed unexpectedly last time. Please tap Copy and send this to sipofdiamond@gmail.com so we can fix it.", color = C.SilverDim, modifier = Modifier.padding(vertical = 8.dp))
+        Text("SafeSpot closed unexpectedly last time. Please tap Send report (or Copy and email it to $CRASH_EMAIL) so we can fix it.", color = C.SilverDim, modifier = Modifier.padding(vertical = 8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button({
                 val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
                 cm?.setPrimaryClip(android.content.ClipData.newPlainText("SafeSpot crash", report))
                 android.widget.Toast.makeText(ctx, "Copied", android.widget.Toast.LENGTH_SHORT).show()
             }) { Text("Copy") }
+            Button({
+                val i = android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:"))
+                    .putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf(CRASH_EMAIL))
+                    .putExtra(android.content.Intent.EXTRA_SUBJECT, "SafeSpot crash ${com.safespot.scanner.BuildConfig.VERSION_NAME}")
+                    .putExtra(android.content.Intent.EXTRA_TEXT, report)
+                runCatching { ctx.startActivity(android.content.Intent.createChooser(i, "Send report")) }
+                    .onFailure { android.widget.Toast.makeText(ctx, "No email app found. Tap Copy instead.", android.widget.Toast.LENGTH_LONG).show() }
+            }) { Text("Send report") }
             OutlinedButton(onContinue) { Text("Continue", color = Color.White) }
         }
         Text(report, color = Color.White, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
